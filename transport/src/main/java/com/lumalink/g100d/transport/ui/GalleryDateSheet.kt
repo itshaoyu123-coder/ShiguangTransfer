@@ -15,10 +15,16 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun GalleryDateSheet(days: Map<LocalDate?, Int>, selected: String?, onSelect: (String?) -> Unit, onDismiss: () -> Unit) {
+@Composable internal fun GalleryDateSheet(days: Map<LocalDate?, Int>, selected: String?, onSelect: (String?) -> Unit, onDismiss: () -> Unit,
+    loading: Boolean, checked: Int, total: Int, message: String?, onReadDates: () -> Unit, onStopDates: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text("按拍摄日期筛选", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        Text("仅筛选已扫描的照片；没有拍摄日期的文件单列，不用导入时间代替。", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        Text("相机目录或缩略图可能不带日期。可读取已扫描照片的文件头补全日期，无需下载整张原片；仅在手动开启后增加请求，支持暂停。", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = if (loading) onStopDates else onReadDates) { Text(if (loading) "暂停读取日期" else "补全拍摄日期") }
+            if (total > 0) Text("$checked / $total 张", modifier = Modifier.padding(top = 12.dp), fontSize = 12.sp)
+        }
+        if (message != null) Text(if (loading) "正在读取，预览和导入优先" else message, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 ListItem(headlineContent = { Text("全部日期") }, supportingContent = { Text("${days.values.sum()} 个文件") },

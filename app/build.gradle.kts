@@ -15,8 +15,8 @@ android {
         applicationId = "app.shiguang.transfer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.2.10-alpha"
+        versionCode = 16
+        versionName = "0.2.13-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }

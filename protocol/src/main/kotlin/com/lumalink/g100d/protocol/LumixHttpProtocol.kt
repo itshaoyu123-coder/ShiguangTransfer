@@ -489,9 +489,9 @@ class LumixHttpProtocol(
 
     /** Gallery reads try the existing grant first; only an explicit 403 renews it.
      * Caller holds CameraAccessGate and owns the returned connection. */
-    suspend fun openPreviewConnection(file: CameraFile): LumixResult<HttpURLConnection> = withContext(Dispatchers.IO) {
+    suspend fun openPreviewConnection(file: CameraFile, rangeEnd: Long? = null): LumixResult<HttpURLConnection> = withContext(Dispatchers.IO) {
         val started = System.nanoTime()
-        var result = openFileConnection(file)
+        var result = openFileConnection(file, rangeStart = rangeEnd?.let { 0L }, rangeEnd = rangeEnd)
         if (result is LumixResult.Success) {
             val connection = result.value
             connection.connectTimeout = 3_000
@@ -509,7 +509,7 @@ class LumixHttpProtocol(
                 logger?.logBody("preview-access", "direct=403 recovery=once")
                 val access = prepareTransferAccess()
                 if (access is LumixResult.Failure) return@withContext access
-                result = openFileConnection(file)
+                result = openFileConnection(file, rangeStart = rangeEnd?.let { 0L }, rangeEnd = rangeEnd)
                 if (result is LumixResult.Success) {
                     result.value.connectTimeout = 3_000
                     result.value.readTimeout = 5_000

@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -21,6 +22,8 @@ import com.lumalink.g100d.protocol.CameraSessionStore
 import com.lumalink.g100d.protocol.LumixEndpoints
 import com.lumalink.g100d.protocol.LumixResult
 import com.lumalink.g100d.protocol.MediaKind
+import com.lumalink.g100d.protocol.captureDateFromHeader
+import com.lumalink.g100d.protocol.readCaptureDatePrefix
 import com.lumalink.g100d.transport.session.CameraConnectionState
 import com.lumalink.g100d.transport.session.CameraSession
 import com.lumalink.g100d.transport.session.ConnectionManager
@@ -122,6 +125,10 @@ data class ConnectUiState(
     val previewIndex: Int = 0,
     val thumbnails: Map<String, Bitmap> = emptyMap(),
     val captureDates: Map<String, Long> = emptyMap(),
+    val datesLoading: Boolean = false,
+    val datesChecked: Int = 0,
+    val datesTotal: Int = 0,
+    val datesMessage: String? = null,
     val preview: CameraPreviewUiState = CameraPreviewUiState(),
 )
 
@@ -147,6 +154,7 @@ class ConnectViewModel(
     private var scanJob: Job? = null
     private var scanGeneration = 0L
     private var previewJob: Job? = null
+    private var dateJob: Job? = null
     private var previewGeneration = 0L
     private val thumbnailCache = SharedPreviewCache<FetchedImage>(96)
     private val originalPreviewCache = SharedPreviewCache<FetchedImage>(2)
@@ -165,6 +173,9 @@ class ConnectViewModel(
     }
     private val thumbnailRequests = mutableSetOf<String>()
     private var sessionKey: Any? = null
+    // Only transfer IDs created in this camera session may update its gallery.
+    // Never match old import records to a new card by name/path/size alone.
+    private val dateTransferFiles = mutableMapOf<String, CameraFile>()
     private var accessReady = false
     private var accessRecoveryAttempted = false
     private var accessRequestInFlight = false
@@ -173,12 +184,49 @@ class ConnectViewModel(
 
     init {
         viewModelScope.launch {
+            transferRepository.transfers.collect { records ->
+                // Local metadata work starts after the transfer queue releases the camera.
+                while (CameraAccessGate.transferActive) delay(200)
+                for (record in records) {
+                    val file = dateTransferFiles[record.id] ?: continue
+                    if (record.state != com.lumalink.g100d.core.data.TransferState.COMPLETED) continue
+                    val protocol = sessionKey ?: continue
+                    val generation = scanGeneration
+                    if (captureDay(file, _uiState.value.captureDates) != null) {
+                        dateTransferFiles.remove(record.id)
+                        continue
+                    }
+                    if (file.kind != MediaKind.JPEG && file.kind != MediaKind.RAW) {
+                        dateTransferFiles.remove(record.id)
+                        continue
+                    }
+                    val date = withContext(Dispatchers.IO) {
+                        try {
+                            record.localUri?.let { uri ->
+                                appContext.contentResolver.openInputStream(Uri.parse(uri))?.use { input ->
+                                    val context = currentCoroutineContext()
+                                    readCaptureDatePrefix(input) { context.ensureActive() }.date
+                                }
+                            }
+                        } catch (error: CancellationException) { throw error }
+                        catch (_: Exception) { null }
+                    }
+                    // A disconnect/refresh during disk IO must not update another gallery.
+                    if (protocol === sessionKey && generation == scanGeneration && dateTransferFiles[record.id] == file) {
+                        if (date != null) _uiState.update { it.copy(captureDates = it.captureDates + (file.path to date)) }
+                        dateTransferFiles.remove(record.id)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             connection.collect { state ->
                 // A new camera session (or disconnect) must not reuse the
                 // previous camera's files, thumbnails or access state.
                 val key = (state as? CameraConnectionState.Connected)?.session?.protocol
                 if (key !== sessionKey) {
                     sessionKey = key
+                    dateTransferFiles.clear()
                     heartbeatJob?.cancel()
                     heartbeatJob = if (key == null) null else viewModelScope.launch {
                         while (true) {
@@ -192,6 +240,7 @@ class ConnectViewModel(
                     }
                     accessReady = false
                     accessRecoveryAttempted = false
+                    stopDateRead()
                     scanGeneration++
                     scanJob?.cancel()
                     cancelThumbnails()
@@ -345,6 +394,7 @@ class ConnectViewModel(
     }
 
     fun loadDirectory(directory: String, resume: Boolean = false) {
+        stopDateRead()
         if (CameraAccessGate.transferActive) {
             _uiState.update { it.copy(message = "传输进行中，暂不刷新相机文件") }
             return
@@ -511,6 +561,9 @@ class ConnectViewModel(
         val needsNetwork = plan == PreviewPlan.FETCH_QUICK || plan == PreviewPlan.FETCH_ORIGINAL
         _uiState.update { it.copy(previewQueue = queue, previewIndex = index,
             preview = CameraPreviewUiState(file = file, bitmap = initialBitmap,
+                capturedAtEpochSeconds = file.capturedAtEpochSeconds ?: it.captureDates[file.path]
+                    ?: it.captureDates[file.path.substringBeforeLast('.') + ".JPG"]
+                    ?: cachedOriginal?.capturedAtEpochSeconds ?: cachedQuick?.capturedAtEpochSeconds,
                 loading = needsNetwork, original = cachedOriginal?.original == true, highQuality = cachedOriginal?.bitmap != null, originalRequested = readsOriginal,
                 totalBytes = if (readsOriginal) file.sizeBytes else 0)) }
         // A cached preview must not trigger authorization, a Browse, or an 11 MB original GET.
@@ -541,9 +594,8 @@ class ConnectViewModel(
                                     _uiState.update { it.copy(preview = it.preview.copy(bytesRead = bytes, totalBytes = total)) }
                             }
                         }
-                        data?.let { bytes -> decodePreview(bytes.bytes, 2048)?.let { bitmap ->
-                            FetchedImage(bitmap = bitmap, original = readsOriginal, capturedAtEpochSeconds = exifDate(bytes.bytes))
-                        } }
+                        data?.let { bytes -> FetchedImage(bitmap = decodePreview(bytes.bytes, 2048),
+                            original = readsOriginal, capturedAtEpochSeconds = exifDate(bytes.bytes)) }
                     }
                 }
             }
@@ -554,7 +606,7 @@ class ConnectViewModel(
             _uiState.update { state -> state.copy(
                 captureDates = if (capturedAt != null) state.captureDates + (file.path to capturedAt) else state.captureDates,
                 preview = state.preview.copy(bitmap = fetched?.bitmap ?: state.preview.bitmap ?: initialBitmap,
-                    capturedAtEpochSeconds = capturedAt, loading = false,
+                    capturedAtEpochSeconds = capturedAt ?: state.preview.capturedAtEpochSeconds, loading = false,
                     original = fetched?.original == true, highQuality = enhance && fetched?.bitmap != null,
                     error = if (fetched?.bitmap == null) {
                         if (enhance) "清晰预览暂未读取成功，已保留快速预览；可以重试或直接导入" else "快速预览暂不可用，可重试或直接导入原文件"
@@ -596,8 +648,12 @@ class ConnectViewModel(
         if (file.isDirectory || !_uiState.value.previewEnabled) return
         if (_uiState.value.thumbnails.containsKey(file.path)) return
         thumbnailCache.get(quickPreviewKey(file))?.let { cached ->
-            cached.bitmap?.let { bitmap -> _uiState.update { it.copy(thumbnails =
-                (it.thumbnails + (file.path to bitmap)).entries.toList().takeLast(160).associate { entry -> entry.key to entry.value }) } }
+            _uiState.update { state -> state.copy(
+                thumbnails = cached.bitmap?.let { bitmap ->
+                    (state.thumbnails + (file.path to bitmap)).entries.toList().takeLast(160).associate { it.key to it.value }
+                } ?: state.thumbnails,
+                captureDates = cached.capturedAtEpochSeconds?.let { state.captureDates + (file.path to it) } ?: state.captureDates,
+            ) }
             return
         }
         if (!thumbnailRequests.add(file.path)) return
@@ -710,7 +766,80 @@ class ConnectViewModel(
         } }
     }
 
+    fun stopDateRead() {
+        dateJob?.cancel()
+        dateJob = null
+        _uiState.update { it.copy(datesLoading = false,
+            datesMessage = if (it.datesLoading) "日期读取已暂停，已读取的日期已保留，可再次补全。" else it.datesMessage) }
+    }
+
+    fun readMissingDates() {
+        if (dateJob?.isActive == true) return
+        val session = connectionManager.session.value ?: return
+        val candidates = dateReadCandidates(_uiState.value.files, _uiState.value.captureDates)
+        if (candidates.isEmpty()) {
+            _uiState.update { it.copy(datesLoading = false, datesChecked = 0, datesTotal = 0,
+                datesMessage = "当前已扫描照片无需补全日期；视频暂不支持读取拍摄日期。") }
+            return
+        }
+        val generation = scanGeneration
+        dateJob = viewModelScope.launch {
+            _uiState.update { it.copy(datesLoading = true, datesChecked = 0, datesTotal = candidates.size,
+                datesMessage = "正在补全已扫描照片的日期；预览和导入优先") }
+            try {
+                for ((index, file) in candidates.withIndex()) {
+                    currentCoroutineContext().ensureActive()
+                    if (generation != scanGeneration || connectionManager.session.value?.protocol !== session.protocol) break
+                    var attempted = false
+                    var date: Long? = null
+                    while (!attempted) {
+                        currentCoroutineContext().ensureActive()
+                        CameraAccessGate.withScanCamera {
+                            if (_uiState.value.preview.file == null) {
+                                attempted = true
+                                date = withContext(Dispatchers.IO) { fetchCaptureDate(session, file) }
+                            }
+                        }
+                        if (!attempted) delay(200)
+                    }
+                    if (generation != scanGeneration || connectionManager.session.value?.protocol !== session.protocol) break
+                    _uiState.update { state -> state.copy(datesChecked = index + 1,
+                        captureDates = date?.let { state.captureDates + (file.path to it) } ?: state.captureDates) }
+                    // Yield between headers so directory pages and the heartbeat keep running.
+                    delay(100)
+                }
+                _uiState.update { it.copy(datesMessage = "本轮日期读取完成；仍未知的照片未在文件头提供可读取日期。新扫描的照片可再次补全。") }
+            } finally {
+                if (dateJob === currentCoroutineContext()[Job]) _uiState.update { it.copy(datesLoading = false) }
+            }
+        }
+    }
+
+    private suspend fun fetchCaptureDate(session: CameraSession, file: CameraFile): Long? {
+        val limit = 128 * 1024
+        val result = session.protocol.openPreviewConnection(file, rangeEnd = limit - 1L)
+        if (result !is LumixResult.Success) return null
+        val connection = result.value
+        return withConnectionCancellation(connection) {
+            try {
+                if (connection.responseCode != 200 && connection.responseCode != 206) return@withConnectionCancellation null
+                if (connection.responseCode == 206 && !connection.getHeaderField("Content-Range").orEmpty().startsWith("bytes 0-"))
+                    return@withConnectionCancellation null
+                // The camera may ignore Range. Never read the entire original in that case.
+                val context = currentCoroutineContext()
+                val header = readCaptureDatePrefix(connection.inputStream) { context.ensureActive() }
+                Diagnostics.info("capture-date header bytes=${header.bytesRead} found=${header.date != null} status=${connection.responseCode}")
+                header.date
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                Diagnostics.warn("capture-date header failed=${error.javaClass.simpleName}")
+                null
+            } finally { connection.disconnect() }
+        }
+    }
+
     private fun exifDate(bytes: ByteArray): Long? {
+        captureDateFromHeader(bytes)?.let { return it }
         return runCatching {
             val exif = ExifInterface(ByteArrayInputStream(bytes))
             val raw = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
@@ -749,6 +878,7 @@ class ConnectViewModel(
     }
 
     override fun onCleared() {
+        dateJob?.cancel()
         scanGeneration++
         scanJob?.cancel()
         cancelThumbnails()
@@ -966,7 +1096,8 @@ class ConnectViewModel(
     fun enqueueFile(file: CameraFile) { enqueueFiles(listOf(file)) }
 
     private fun enqueueFiles(selected: List<CameraFile>) {
-        if (connectionManager.session.value == null) {
+        val enqueueSession = connectionManager.session.value
+        if (enqueueSession == null) {
             _uiState.update { it.copy(message = "请先连接相机，再导入文件") }
             return
         }
@@ -975,7 +1106,7 @@ class ConnectViewModel(
             try {
                 // Visible thumbnail jobs wait for transfer completion; offscreen ones cancel on dispose.
                 closePreview()
-                transferRepository.enqueue(
+                val ids = transferRepository.enqueue(
                     selected.map { file ->
                         NewTransfer(
                             cameraPath = file.path,
@@ -985,6 +1116,9 @@ class ConnectViewModel(
                         )
                     },
                 )
+                if (connectionManager.session.value?.protocol === enqueueSession.protocol) {
+                    ids.zip(selected).forEach { (id, file) -> dateTransferFiles[id] = file }
+                }
                 TransferService.start(appContext)
             } catch (error: Throwable) {
                 CameraAccessGate.transferActive = false

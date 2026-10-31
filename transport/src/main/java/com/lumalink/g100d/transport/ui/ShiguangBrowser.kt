@@ -297,10 +297,12 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
             }
         }
     }
-    if (showGalleryDates) GalleryDateSheet(dateCounts, selectedGalleryDate, onSelect = { selectedGalleryDate = it; viewModel.clearGallerySelection(); showGalleryDates = false }, onDismiss = { showGalleryDates = false })
+    if (showGalleryDates) GalleryDateSheet(dateCounts, selectedGalleryDate, onSelect = { selectedGalleryDate = it; viewModel.clearGallerySelection(); showGalleryDates = false }, onDismiss = { showGalleryDates = false },
+        loading = ui.datesLoading, checked = ui.datesChecked, total = ui.datesTotal, message = ui.datesMessage,
+        onReadDates = viewModel::readMissingDates, onStopDates = viewModel::stopDateRead)
     if (ui.preview.file != null) FullPreview(ui, onClose = viewModel::closePreview, onToggle = { viewModel.toggleSelection(ui.preview.file!!.path) }, onOriginal = viewModel::loadOriginalPreview, onPageSelected = viewModel::previewAt,
         onImport = { requestNotice(); viewModel.enqueueFile(ui.preview.file!!); showQueue = true })
-    if (showAbout) AlertDialog(onDismissRequest = { showAbout = false }, title = { Text("拾光传输 · 0.2.10") },
+    if (showAbout) AlertDialog(onDismissRequest = { showAbout = false }, title = { Text("拾光传输 · 0.2.13") },
         text = { Text("为 S5 II 的照片导入而做。\n\n基于你提供的 LumaLink 渐进版3通信与传输代码改进，遵循 Apache-2.0；界面重新设计。\n\n仍是待真机验证的测试版。自动连接受 Android 和小米系统策略影响。") },
         confirmButton = { TextButton(onClick = { showAbout = false; showDiagnostics = true }) { Text("诊断日志") } },
         dismissButton = { TextButton(onClick = { showAbout = false; showLicenses = true }) { Text("开源声明") } })

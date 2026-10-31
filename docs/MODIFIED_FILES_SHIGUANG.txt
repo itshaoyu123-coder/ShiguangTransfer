@@ -26,3 +26,5 @@ Also includes 0.2.1 SOAP 701 parser, bounded playback recovery, and tests.
 
 Public snapshot preparation: README, CHANGELOG, DEVELOPMENT_HISTORY, SHIGUANG_USER_GUIDE, PUBLISHING, release notes, CONTRIBUTING, issue template, CI read-only permissions, gitattributes/ignore additions and local username redaction in two inherited reports. Added prominent modification headers to AppContainer.kt, LumaLinkApplication.kt and TransfersViewModel.kt; no functional Kotlin changes during publication preparation.
 Public target corrected to itshaoyu123-coder/ShiguangTransfer by user instruction. Initial verified alpha APK and checksum retained under releases/assets for a build-gated Release job; no runtime code changes.
+
+0.2.11–0.2.13: CaptureDateHeader/parser tests; bounded preview Range recovery; GalleryDateSheet/Policy tests; session-bound passive date collection in ConnectViewModel; version, release workflow, changelog and verification documents. No private sample photos included.

@@ -7,6 +7,18 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.Test
 
 class PreviewAccessTest {
+    @Test fun boundedHeaderRangeSurvivesAccessRecovery() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(403)); server.enqueue(emptyBrowse())
+            server.enqueue(MockResponse().setResponseCode(206).setBody("header")); server.start()
+            val file = CameraFile(server.url("/photo.JPG").toString(), "photo.JPG", 10000000)
+            val result = protocol(server).openPreviewConnection(file, rangeEnd = 131071) as LumixResult.Success
+            try { assertThat(result.value.responseCode).isEqualTo(206) } finally { result.value.disconnect() }
+            assertThat(server.takeRequest().getHeader("Range")).isEqualTo("bytes=0-131071")
+            assertThat(server.takeRequest().method).isEqualTo("POST")
+            assertThat(server.takeRequest().getHeader("Range")).isEqualTo("bytes=0-131071")
+        }
+    }
     @Test fun heartbeatOnlyReadsStateAndPreservesSession() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("<camrply><result>ok</result></camrply>")); server.start()

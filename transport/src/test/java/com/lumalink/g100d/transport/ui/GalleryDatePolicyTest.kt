@@ -8,6 +8,14 @@ import java.time.ZoneId
 import org.junit.Test
 
 class GalleryDatePolicyTest {
+    @Test fun headerPlanDeduplicatesRawJpegAndSkipsKnownDatesAndVideos() {
+        val raw = CameraFile("/DO1.RW2", "1.RW2", 1, kind = com.lumalink.g100d.protocol.MediaKind.RAW)
+        val jpg = CameraFile("/DO1.JPG", "1.JPG", 1, kind = com.lumalink.g100d.protocol.MediaKind.JPEG)
+        val other = CameraFile("/folder/DO1.JPG", "1.JPG", 1, kind = com.lumalink.g100d.protocol.MediaKind.JPEG)
+        val video = CameraFile("/a.MP4", "a.MP4", 1, kind = com.lumalink.g100d.protocol.MediaKind.VIDEO)
+        assertThat(dateReadCandidates(listOf(raw,jpg,other,video), emptyMap())).containsExactly(jpg, other).inOrder()
+        assertThat(dateReadCandidates(listOf(raw,jpg,other), mapOf(jpg.path to 1790000000L))).containsExactly(other)
+    }
     private val zone = ZoneId.of("UTC")
     private val taken = Instant.parse("2026-10-01T23:30:00Z").epochSecond
     @Test fun cameraCaptureDateTakesPrecedenceOverCachedExifDate() {

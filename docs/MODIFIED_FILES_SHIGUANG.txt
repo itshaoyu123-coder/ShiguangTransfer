@@ -1,0 +1,28 @@
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/lumalink/g100d/LumaApp.kt
+app/src/main/java/com/lumalink/g100d/MainActivity.kt
+app/src/main/res/values/colors.xml
+app/src/main/res/values/strings.xml
+app/src/main/res/values/themes.xml
+protocol/src/main/kotlin/com/lumalink/g100d/protocol/LumixHttpProtocol.kt
+protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpContentDirectoryClient.kt
+protocol/src/test/kotlin/com/lumalink/g100d/protocol/ProgressiveBrowseTest.kt
+transport/src/main/java/com/lumalink/g100d/transport/session/ConnectionManager.kt
+transport/src/main/java/com/lumalink/g100d/transport/transfer/TransferDownloader.kt
+transport/src/main/java/com/lumalink/g100d/transport/transfer/TransferNotifier.kt
+transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectViewModel.kt
+
+0.2.2 additions: transport/ui/PreviewPolicy.kt, transport/ui/PreviewPolicyTest.kt; ConnectViewModel.kt and ShiguangBrowser.kt preview redesign; docs/FIX_0.2.2_PREVIEW.md; version metadata.
+Also includes 0.2.1 SOAP 701 parser, bounded playback recovery, and tests.
+0.2.3: CameraFile, UPnP parser, preview quality routing/cache state, UI quality labels, regression tests and version metadata. See FIX_0.2.3_JPEG_PREVIEW.md.
+0.2.4: preview connection request order, grant renewal window/fallback, conditional settling, PreviewAccessTest and performance verification guide.
+0.2.5: ConnectionCancellation helper/test, preview header and body cancellation, timeout configuration, stage diagnostics, version metadata and verification guide.
+0.2.6: ScanService and host, application-owned camera ViewModel, scan lifecycle/background heartbeat, back navigation/title UI, page progress/retry/URL deduplication and resource limit, progressive regression tests and manifest.
+0.2.7: preview queue/gestures, new ImportHistory screen, HistoryPolicy/tests, ImportedPhotoActions, TransfersViewModel deletion/error handling and date metadata, exact Lab package visibility, version/docs.
+0.2.8: HorizontalPager preview UI/settled-page routing, GalleryDatePolicy/Sheet/tests, CameraDateParser/tests and UPnP parser delegation, capture-date provenance, Lab ACTION_EDIT probing/diagnostics and user feedback, version/docs.
+0.2.9: ImportedPhotoMarker and tests, TransferItem cameraPath mapping/completed index on Default dispatcher, gallery badge and version/docs. No protocol or downloader changes.
+0.2.10: HistoryThumbnail loader/composable, HistoryThumbnailPolicy/tests, ImportHistory thumbnail placement and version/docs. Camera and transfer worker unchanged.
+
+Public snapshot preparation: README, CHANGELOG, DEVELOPMENT_HISTORY, SHIGUANG_USER_GUIDE, PUBLISHING, release notes, CONTRIBUTING, issue template, CI read-only permissions, gitattributes/ignore additions and local username redaction in two inherited reports. Added prominent modification headers to AppContainer.kt, LumaLinkApplication.kt and TransfersViewModel.kt; no functional Kotlin changes during publication preparation.
+Public target corrected to itshaoyu123-coder/ShiguangTransfer by user instruction. Initial verified alpha APK and checksum retained under releases/assets for a build-gated Release job; no runtime code changes.

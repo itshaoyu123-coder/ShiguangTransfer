@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modified 2026-10-30 by Shiguang Transfer contributors. Based on LumaLink progressive.3; Apache-2.0. -->
+<resources>
+    <color name="launch_background">#F6F4EF</color>
+    <color name="icon_background">#F6F4EF</color>
+</resources>

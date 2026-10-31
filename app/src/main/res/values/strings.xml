@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modified 2026-10-30 by Shiguang Transfer contributors. Based on LumaLink progressive.3; Apache-2.0. -->
+<resources>
+    <string name="app_name">拾光传输</string>
+    <string name="app_tagline">把最新的照片，先带到眼前。</string>
+
+    <string name="nav_connect">连接</string>
+    <string name="nav_transfers">传输</string>
+    <string name="nav_gallery">相册</string>
+    <string name="nav_settings">设置</string>
+    <string name="nav_about">关于</string>
+
+    <string name="action_settings">设置</string>
+    <string name="action_back">返回</string>
+</resources>

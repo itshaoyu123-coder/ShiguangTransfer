@@ -1,0 +1,6 @@
+Input archive: LumaLink-progressive-source-5.zip
+SHA-256: 45a937b476183ecb2f652e8499bb9d6a0f829744066c60691d434b804b36c749
+Actual input version: 4.3.11-progressive.3 (versionCode 99)
+Original project: https://github.com/Angelnable/LumaLink
+License: Apache-2.0, retained in root LICENSE and NOTICE.
+Adaptation: Shiguang Transfer 0.2.0-alpha, 2026-10-30.

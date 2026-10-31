@@ -1,0 +1,873 @@
+diff --git a/README.md b/README.md
+index e2fa4bd..f83b0b5 100644
+--- a/README.md
++++ b/README.md
+@@ -1,8 +1,8 @@
+ # LumaLink
+ 
+-> 第二版修复：Browse 分页项目数与 JPG/RAW 文件资源数分别计数；使用 Browse 自己的 TotalMatches 选择末页；兼容有效空页和不支持部分 XML 功能的解析器。复制日志现在最新在前。
++> 第三版新增：后台断联原页重试、单条扫描暂停提示、设备描述与服务地址兼容。第二版修复：Browse 分页项目数与 JPG/RAW 文件资源数分别计数；使用 Browse 自己的 TotalMatches 选择末页；兼容有效空页和不支持部分 XML 功能的解析器。复制日志现在最新在前。
+ 
+-> 此副本为 **4.3.11-progressive.2** 个人测试版：最新照片优先、逐批显示、扫描期间可预览。尚未经过真实相机验证；下方原项目的真机验证记录不代表本修改版已验证。详见 [测试说明](docs/PROGRESSIVE_TEST_GUIDE.md)。
++> 此副本为 **4.3.11-progressive.3** 个人测试版：最新照片优先、逐批显示、扫描期间可预览。第二版已有 S5 II 预览与下载反馈，第三版仍待真机验证；下方原项目的真机验证记录不代表本修改版已验证。详见 [测试说明](docs/PROGRESSIVE_TEST_GUIDE.md)。
+ 
+ **LumaLink（流光图传）** 是面向 Panasonic LUMIX 相机的第三方 Android 文件传输工具。
+ 
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index ada8199..acc93aa 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.lumalink.g100d.progressive2"
+         minSdk = 29
+         targetSdk = 35
+-        versionCode = 98
+-        versionName = "4.3.11-progressive.2"
++        versionCode = 99
++        versionName = "4.3.11-progressive.3"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         vectorDrawables { useSupportLibrary = true }
+     }
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 10db520..ef981ff 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">LumaLink 渐进版2</string>
++    <string name="app_name">LumaLink 渐进版3</string>
+     <string name="app_tagline">G100D 图传与相册</string>
+ 
+     <string name="nav_connect">连接</string>
+diff --git a/docs/PROGRESSIVE_TEST_GUIDE.md b/docs/PROGRESSIVE_TEST_GUIDE.md
+index 6302393..363226f 100644
+--- a/docs/PROGRESSIVE_TEST_GUIDE.md
++++ b/docs/PROGRESSIVE_TEST_GUIDE.md
+@@ -1,12 +1,12 @@
+-# LumaLink 渐进版2测试说明
++# LumaLink 渐进版3测试说明
+ 
+-第二版特别修复：不再把 get_content_info 的文件数当作 UPnP 对象分页下标。界面分别显示文件数与对象扫描进度。
++第三版新增后台短暂错误原页重试和单条扫描暂停提示，优先使用设备公布的服务地址。第二版特别修复：不再把 get_content_info 的文件数当作 UPnP 对象分页下标。界面分别显示文件数与对象扫描进度。
+ 
+ 基于 Angelnable/LumaLink 4.3.11（main 24a0156）修改的个人测试版，不是作者的官方新版。
+ 
+ ## 安装与连接
+ 
+-应用名：LumaLink 渐进版2。包名：com.lumalink.g100d.progressive2。独立安装，不覆盖原版；首次连接需重新授权。
++应用名：LumaLink 渐进版3。包名：com.lumalink.g100d.progressive2。可直接覆盖第二版；与官方原版独立安装。首次安装此包需重新授权。
+ 连接前退出原版、LUMIX Sync 和 LUMIX LAB，避免同时操作相机。通过相机 Wi-Fi 连接测试版。
+ 
+ ## 本次修改
+@@ -29,7 +29,7 @@
+ 6. 点击刷新，或断开后换卡重连，确认旧卡照片不会重新出现。
+ 7. 对比相机显示的总数和最终加载数。相机的逻辑项目数可能与 RAW+JPEG 资源数不同。
+ 
+-这是未经过真实相机验证的构建。协议模拟测试和成功编译不能保证所有相机固件的分页、授权和尾页行为一致。失败时复制诊断日志中的 upnp-newest、transfer-access 和错误行。
++第二版已收到 S5 II 预览与下载可用的反馈；第三版仍待真机验证。协议模拟测试和成功编译不能保证所有相机固件的分页、授权和尾页行为一致。失败时复制诊断日志中的 upnp-newest、transfer-access 和错误行。
+ 
+ ## 源码构建
+ 
+diff --git a/docs/PROGRESSIVE_VERIFICATION.md b/docs/PROGRESSIVE_VERIFICATION.md
+index bade5bb..6c2f440 100644
+--- a/docs/PROGRESSIVE_VERIFICATION.md
++++ b/docs/PROGRESSIVE_VERIFICATION.md
+@@ -1,19 +1,31 @@
+-# 第二版验证记录 — 4.3.11-progressive.2
++# 第三版验证记录 — 4.3.11-progressive.3
+ 
+-依据 S5M2 实际日志修复：get_content_info 返回 6829；Browse 的 TotalMatches 返回 6337。第一版错误采用较大值，末页下标变成 6779，超出 Browse 列表。第二版以 Browse 的 6337 为分页依据，末页下标为 6287。一次 Browse 对象可以含 JPG 和 RAW 两个可下载资源，所以资源数也不能用于推进 StartingIndex。
++## 对应真机现象
+ 
+-返回 0 条的 DIDL-Lite 响应是有效空页，不应因平台不支持可选 XML 配置而报 Invalid UPnP SOAP XML。现在兼容空页和受限解析器，同时显式拒绝 DTD 并禁止外部实体解析。
++S5M2 的第二版已能加载并预览照片，但后台读取可能在 150 个对象、298 个文件附近遇到连接中断。旧界面同时显示“读取失败”和“读取提示”，使可用的部分列表看起来像整个连接失败。对象数与资源文件数不同是正常的，不用文件数推进分页下标。
++
++第三版只显示一条扫描状态：有照片而扫描未完成时，提示“后台扫描暂停”，保留预览、选择与下载；后续成功进度清除旧错误。首次读取完全没有结果时仍显示读取失败。顶部单独显示扫描进度和筛选数量。
++
++## 协议修正
++
++- 设备描述与 SOAP/DIDL 统一使用兼容 Android 的 XML 配置；可选特性不支持时继续解析，仍拒绝 DTD 和外部实体。
++- 优先使用描述文档中公布的 ContentDirectory 与 ConnectionManager 地址；描述解析失败的文本回退按服务类型匹配。
++- Browse 优先发送带引号的 SOAPAction，并保留兼容头部回退；失败日志记录页码、请求数量和响应片段。
++- 同一页 HTTP 500 最多退避重试三次；断联/超时最多重试两次。退避期间释放相机访问锁，已加载内容保持可用，预览和下载可以继续。
++- 重试耗尽后保留已加载照片；手动刷新仍会重新扫描，不宣称已实现持久化断点续扫。
++
++现有日志未包含 HTTP 500 的 SOAP fault，无法确认其唯一原因。本次完善初始化、兼容性、重试和诊断，不保证所有 HTTP 500 已消除。
+ 
+ ## 测试与构建
+ 
+-- 先运行 3 个回归用例，均失败：不同接口总数被混用；RAW+JPG 两个资源被当作两个对象推进；受限 XML 工厂下有效空页失败。修复后通过。
+-- 最终针对性协议测试：17 项通过（11 分页用例、3 访问调度用例、3 XML 兼容与实体安全用例）。
+-- Core：6 项通过，包含复制日志最新在前；Transport：2 项通过。
+-- 最终 `:protocol:test`（上述筛选）+ `:core:testDebugUnitTest` + `:transport:testDebugUnitTest` + `:app:assembleRelease --offline`：BUILD SUCCESSFUL。
+-- 完整协议测试中保留 4 项已知上游失败（第一版工作时在未修改上游复现，详见 v1 验证记录）。本次完整运行还发现新增相对 URL 测试只排入一次模拟响应、而浏览器需要探测和首屏两次请求；已修正该测试夹具，随后相关用例通过。不声称旧测试全集全部通过。
+-- APK 签名与 manifest 已校验：包名 com.lumalink.g100d.progressive2，versionCode 98，应用名 LumaLink 渐进版2。独立安装，与第一版和官方原版并存。
+-- SHA-256: `f2f6ec4566724d3e85300bcb97d78bdbbc79ac5b105ae5b13caa3335097d3083`
++- 针对性协议测试 27 项通过：分页与恢复 15 项、访问调度 3 项、设备描述解析 6 项、SOAP/DIDL XML 兼容与实体安全 3 项。
++- Core 6 项、Transport 6 项通过，其中新增 4 项扫描提示状态测试。合计 39 项，零失败。
++- 新增回归覆盖受限 Android XML 工厂、解析器不可用时的服务匹配、带引号 SOAPAction、连续短暂 HTTP 500、设备公布的 ConnectionManager 初始化，以及较早页断联后保留首屏并重试。
++- 发布 APK 构建 `:app:assembleRelease --offline` 成功，签名和 manifest 已验证。
++- 旧协议全集有 4 项已在未修改上游复现的失败，详见 v1 记录；未声称旧测试全集全部通过。
++- 包名 com.lumalink.g100d.progressive2，versionCode 99，应用名 LumaLink 渐进版3。签名与第二版一致，可覆盖第二版，与官方原版并存。
++- SHA-256: `ac784d003c32fc5624a0362d3c196ed17ec262fabd88e18210a25341d31e427e`
+ 
+-## 尚待真机确认
++## 待真机验证
+ 
+-首屏是否包含最后拍摄的照片；扫描时大图/缩略图/下载是否顺畅；不同固件的相机列表顺序。这里使用了真实日志对应的计数问题构造模拟响应，但不能代替 S5 II 实测。
++第二版已由用户确认预览和下载可用；第三版仍需 S5 II 实测。重点检查最新照片顺序、后台扫描恢复、大卡全量读取，以及预览与下载期间的响应。模拟测试不能替代真实相机固件验证。
+diff --git a/docs/PROGRESSIVE_VERIFICATION_v2.md b/docs/PROGRESSIVE_VERIFICATION_v2.md
+new file mode 100644
+index 0000000..bade5bb
+--- /dev/null
++++ b/docs/PROGRESSIVE_VERIFICATION_v2.md
+@@ -0,0 +1,19 @@
++# 第二版验证记录 — 4.3.11-progressive.2
++
++依据 S5M2 实际日志修复：get_content_info 返回 6829；Browse 的 TotalMatches 返回 6337。第一版错误采用较大值，末页下标变成 6779，超出 Browse 列表。第二版以 Browse 的 6337 为分页依据，末页下标为 6287。一次 Browse 对象可以含 JPG 和 RAW 两个可下载资源，所以资源数也不能用于推进 StartingIndex。
++
++返回 0 条的 DIDL-Lite 响应是有效空页，不应因平台不支持可选 XML 配置而报 Invalid UPnP SOAP XML。现在兼容空页和受限解析器，同时显式拒绝 DTD 并禁止外部实体解析。
++
++## 测试与构建
++
++- 先运行 3 个回归用例，均失败：不同接口总数被混用；RAW+JPG 两个资源被当作两个对象推进；受限 XML 工厂下有效空页失败。修复后通过。
++- 最终针对性协议测试：17 项通过（11 分页用例、3 访问调度用例、3 XML 兼容与实体安全用例）。
++- Core：6 项通过，包含复制日志最新在前；Transport：2 项通过。
++- 最终 `:protocol:test`（上述筛选）+ `:core:testDebugUnitTest` + `:transport:testDebugUnitTest` + `:app:assembleRelease --offline`：BUILD SUCCESSFUL。
++- 完整协议测试中保留 4 项已知上游失败（第一版工作时在未修改上游复现，详见 v1 验证记录）。本次完整运行还发现新增相对 URL 测试只排入一次模拟响应、而浏览器需要探测和首屏两次请求；已修正该测试夹具，随后相关用例通过。不声称旧测试全集全部通过。
++- APK 签名与 manifest 已校验：包名 com.lumalink.g100d.progressive2，versionCode 98，应用名 LumaLink 渐进版2。独立安装，与第一版和官方原版并存。
++- SHA-256: `f2f6ec4566724d3e85300bcb97d78bdbbc79ac5b105ae5b13caa3335097d3083`
++
++## 尚待真机确认
++
++首屏是否包含最后拍摄的照片；扫描时大图/缩略图/下载是否顺畅；不同固件的相机列表顺序。这里使用了真实日志对应的计数问题构造模拟响应，但不能代替 S5 II 实测。
+diff --git a/docs/superpowers/progress.md b/docs/superpowers/progress.md
+index 0bebaf4..ef18a43 100644
+--- a/docs/superpowers/progress.md
++++ b/docs/superpowers/progress.md
+@@ -21,3 +21,6 @@ Final package: release build successful, signature and manifest checked; app ~3.
+ 
+ ## Progressive.2 correction
+ Device logs show get_content_info=6829 but Browse TotalMatches=6337 and a valid empty response. Earlier total-calibration ruling is superseded: those counts must not be mixed for offsets. Object metadata governs paging; resource files govern loaded-file count. RAW+JPEG object progress and Android XML compatibility covered. Final focused protocol 17/17, Core 6/6, Transport 2/2; release assemble and signature checks pass. Legacy four failures remain documented. App ID progressive2 provides separate installation.
++
++## Progressive.3 reliability correction
++Device feedback: preview/download work with 298 resources from 150 objects, but older-page scanning aborts and duplicate failure banners persist. Shared Android-compatible XML parsing now covers device descriptions; advertised service URLs are preferred. Added quoted-first SOAPAction, fault diagnostics, bounded busy/network retries outside the camera lock, and one nonfatal partial-scan notice. A successful progress snapshot clears stale errors. HTTP500 root cause remains unconfirmed without fault data. Focused protocol 27/27, Core 6/6, Transport 6/6 passed; release assemble succeeded. Manifest versionCode99 and matching v2 certificate verified. S5 II validation remains pending.
+diff --git a/protocol/src/main/kotlin/com/lumalink/g100d/protocol/CameraXml.kt b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/CameraXml.kt
+new file mode 100644
+index 0000000..c0f5239
+--- /dev/null
++++ b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/CameraXml.kt
+@@ -0,0 +1,27 @@
++package com.lumalink.g100d.protocol
++
++import java.io.StringReader
++import javax.xml.parsers.DocumentBuilderFactory
++import org.w3c.dom.Document
++import org.xml.sax.InputSource
++
++/** Shared safe XML setup for camera descriptions and SOAP/DIDL responses. */
++internal object CameraXml {
++    fun hasUnsafeDeclaration(value: String): Boolean =
++        value.contains("<!DOCTYPE", ignoreCase = true) || value.contains("<!ENTITY", ignoreCase = true)
++
++    fun parse(value: String, factoryProvider: () -> DocumentBuilderFactory): Document? = runCatching {
++        if (hasUnsafeDeclaration(value)) return@runCatching null
++        val factory = factoryProvider().apply {
++            isNamespaceAware = true
++            runCatching { isXIncludeAware = false }
++            runCatching { isExpandEntityReferences = false }
++            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
++            runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
++            runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
++        }
++        factory.newDocumentBuilder().apply {
++            setEntityResolver { _, _ -> InputSource(StringReader("")) }
++        }.parse(InputSource(StringReader(value)))
++    }.getOrNull()
++}
+diff --git a/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpContentDirectoryClient.kt b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpContentDirectoryClient.kt
+index 9f121b0..b01825e 100644
+--- a/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpContentDirectoryClient.kt
++++ b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpContentDirectoryClient.kt
+@@ -1,6 +1,5 @@
+ package com.lumalink.g100d.protocol
+ 
+-import java.io.StringReader
+ import java.net.SocketTimeoutException
+ import java.util.concurrent.TimeUnit
+ import kotlinx.coroutines.CancellationException
+@@ -15,7 +14,6 @@ import okhttp3.OkHttpClient
+ import okhttp3.Request
+ import okhttp3.RequestBody.Companion.toRequestBody
+ import org.w3c.dom.Element
+-import org.xml.sax.InputSource
+ import javax.xml.parsers.DocumentBuilderFactory
+ 
+ /**
+@@ -46,6 +44,8 @@ class UpnpContentDirectoryClient(
+     private var protocolInfoSent = false
+     private val rejectedSoapUrls = mutableSetOf<String>()
+     private var descriptionResolved = false
++    private var controlUrlAdvertised = false
++    private var connectionManagerUrl: String? = null
+     private val fileBaseUrl: String = fileBaseUrlOverride ?: "http://$host:50001/"
+ 
+     private suspend fun resolveDescriptionOnce() {
+@@ -53,8 +53,10 @@ class UpnpContentDirectoryClient(
+         when (val resolved = descriptionResolver.resolve()) {
+             is LumixResult.Success -> {
+                 activeSoapUrl = resolved.value
++                connectionManagerUrl = descriptionResolver.connectionManagerControlUrl
++                controlUrlAdvertised = true
+                 descriptionResolved = true
+-                logger?.logBody("upnp-resolve", "ContentDirectory=$activeSoapUrl (cached)")
++                logger?.logBody("upnp-resolve", "ContentDirectory=$activeSoapUrl ConnectionManager=$connectionManagerUrl (cached)")
+             }
+ 
+             is LumixResult.Failure -> {
+@@ -100,30 +102,42 @@ class UpnpContentDirectoryClient(
+             return@withContext LumixResult.Failure(LumixError.ReadOnlyViolation("non-local UPnP host: $host"))
+         }
+         suspend fun read(start: Int, count: Int): LumixResult<BrowsePage> {
++            var authRetries = 0
++            var busyRetries = 0
++            var networkRetries = 0
+             while (true) {
+                 currentCoroutineContext().ensureActive()
+                 beforePage()
+                 val result = CameraAccessGate.withScanCamera {
+                     resolveDescriptionOnce()
+                     var page = browsePage(start, count)
+-                    var authRetries = 0
+-                    var busyRetried = false
+-                    while (page is LumixResult.Failure) {
+-                        val message = page.error.message.orEmpty()
+-                        if (message.contains("403") && authRetries < 2 && onAuthRefresh != null) {
+-                            authRetries++
+-                            if (!onAuthRefresh()) break
+-                            delay(150)
+-                        } else if (message.contains("500") && !busyRetried) {
+-                            busyRetried = true
+-                            delay(500)
+-                        } else break
++                    while (page is LumixResult.Failure &&
++                        Regex("UPnP HTTP ([0-9]{3})").find(page.error.message.orEmpty())?.groupValues?.get(1) == "403" &&
++                        authRetries < 2 && onAuthRefresh != null
++                    ) {
++                        authRetries++
++                        if (!onAuthRefresh()) break
++                        protocolInfoSent = false
++                        delay(150)
+                         page = browsePage(start, count)
+                     }
+                     page
+                 }
+-                if (result != null) return result
+-                delay(40)
++                if (result == null) { delay(40); continue }
++                if (result is LumixResult.Success) return result
++                val error = (result as LumixResult.Failure).error
++                val status = Regex("UPnP HTTP ([0-9]{3})").find(error.message.orEmpty())?.groupValues?.get(1)
++                val waitMs = when {
++                    status == "500" && busyRetries < 3 -> (++busyRetries * 1000L)
++                    (error is LumixError.Offline || error is LumixError.Timeout) && networkRetries < 2 -> {
++                        protocolInfoSent = false
++                        ++networkRetries * 500L
++                    }
++                    else -> return result
++                }
++                logger?.logBody("upnp-retry", "start=$start count=$count busyRetry=$busyRetries networkRetry=$networkRetries waitMs=$waitMs error=${error.message}")
++                // Never hold the camera lock during backoff: previews/transfers can continue.
++                delay(waitMs)
+             }
+         }
+         suspend fun readWindow(start: Int, count: Int): LumixResult<BrowsePage> {
+@@ -354,8 +368,7 @@ class UpnpContentDirectoryClient(
+ 
+     private fun browsePage(startIndex: Int, count: Int): LumixResult<BrowsePage> {
+         if (sendProtocolInfo && !protocolInfoSent) {
+-            protocolInfoSent = true
+-            sendGetProtocolInfo()
++            protocolInfoSent = sendGetProtocolInfo()
+         }
+ 
+         val body = buildString {
+@@ -385,12 +398,13 @@ class UpnpContentDirectoryClient(
+         return try {
+             val quotedAction =
+                 "\"urn:schemas-upnp-org:service:ContentDirectory:1#Browse\""
+-            val actionVariants = listOf(quotedAction.removeSurrounding("\""), quotedAction)
++            val actionVariants = listOf(quotedAction, quotedAction.removeSurrounding("\""))
+             val contentVariants = listOf(
+                 "text/xml; charset=\"utf-8\"",
+                 "text/xml; charset=utf-8",
+             )
+             val urls = linkedSetOf<String>()
++            if (controlUrlAdvertised) urls += activeSoapUrl
+             if (tryLumixPrefix && activeSoapUrl.contains("/Server0/") &&
+                 !activeSoapUrl.contains("/Lumix/Server0/")
+             ) {
+@@ -403,7 +417,9 @@ class UpnpContentDirectoryClient(
+ 
+             var success: okhttp3.Response? = null
+             var lastCode: Int? = null
++            var lastFault = ""
+             urlLoop@ for (url in urls.filterNot { it in rejectedSoapUrls }) {
++                var urlCode: Int? = null
+                 for (contentType in contentVariants) {
+                     for (action in actionVariants) {
+                         val attempt = executeBrowse(url, body, contentType, action)
+@@ -411,26 +427,32 @@ class UpnpContentDirectoryClient(
+                             "upnp-attempt",
+                             "$url content=$contentType action=$action -> HTTP ${attempt.code}",
+                         )
+-                        lastCode = attempt.code
++                        urlCode = attempt.code
++                        if (attempt.code != 404 || lastCode == null) lastCode = attempt.code
+                         if (attempt.code in 200..299) {
+                             success = attempt
+                             activeSoapUrl = url
+                             break@urlLoop
+                         }
++                        val fault = runCatching { attempt.body?.string().orEmpty().take(600) }.getOrDefault("")
++                        if (attempt.code != 404) {
++                            lastFault = fault.take(180)
++                            logger?.logBody("upnp-http-error", "start=$startIndex count=$count status=${attempt.code} quotedAction=${action.startsWith('\"')} body=$fault")
++                        }
+                         if (attempt.code == 404) rejectedSoapUrls += url
+                         attempt.close()
+                         // 404 means this URL is wrong: try the next control URL
+                         // instead of retrying headers against the same path.
+-                        if (attempt.code != 403) break
++                        if (attempt.code !in setOf(400, 403, 415, 500)) break
+                     }
+-                    if (success != null || lastCode != 403) break
++                    if (success != null || urlCode !in setOf(400, 403, 415, 500)) break
+                 }
+             }
+ 
+             val result = success
+             if (result == null) {
+                 return LumixResult.Failure(
+-                    LumixError.ProtocolMismatch("UPnP HTTP ${lastCode ?: "error"}"),
++                    LumixError.ProtocolMismatch("UPnP HTTP ${lastCode ?: "error"} start=$startIndex count=$count ${lastFault.take(180)}"),
+                 )
+             }
+             result.use { response ->
+@@ -538,7 +560,7 @@ class UpnpContentDirectoryClient(
+      * camera advertises a ConnectionManager service; some firmware rejects
+      * ContentDirectory until this has been called.
+      */
+-    private fun sendGetProtocolInfo() {
++    private fun sendGetProtocolInfo(): Boolean {
+         val cmBody = buildString {
+             append("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+             append(
+@@ -555,6 +577,8 @@ class UpnpContentDirectoryClient(
+         }
+         val base = activeSoapUrl.substringBeforeLast('/')
+         val cmUrls = linkedSetOf<String>()
++        connectionManagerUrl?.let { cmUrls += it }
++        var retryable = false
+         if (base.contains("/Server0") && !base.contains("/Lumix/Server0")) {
+             cmUrls += base.replace("/Server0", "/Lumix/Server0") + "/CM_control"
+         }
+@@ -578,12 +602,15 @@ class UpnpContentDirectoryClient(
+                         "upnp-protocol-info",
+                         "$cmUrl -> HTTP ${response.code}",
+                     )
+-                    if (response.code == 200) return
++                    if (response.code == 200) return true
++                    if (response.code >= 500) retryable = true
+                 }
+             } catch (error: Throwable) {
++                retryable = true
+                 logger?.logBody("upnp-protocol-info", "$cmUrl -> ${error.message}")
+             }
+         }
++        return !retryable
+     }
+ 
+     private fun parseResponse(soap: String): LumixResult<List<CameraFile>> {
+@@ -806,20 +833,7 @@ class UpnpContentDirectoryClient(
+         }.getOrNull()
+     }
+ 
+-    private fun parseXml(value: String) = runCatching {
+-        if (value.contains("<!DOCTYPE", ignoreCase = true) || value.contains("<!ENTITY", ignoreCase = true)) return@runCatching null
+-        val factory = xmlFactory().apply {
+-            isNamespaceAware = true
+-            runCatching { isXIncludeAware = false }
+-            runCatching { isExpandEntityReferences = false }
+-            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+-            runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+-            runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+-        }
+-        factory.newDocumentBuilder().apply {
+-            setEntityResolver { _, _ -> InputSource(StringReader("")) }
+-        }.parse(InputSource(StringReader(value)))
+-    }.getOrNull()
++    private fun parseXml(value: String) = CameraXml.parse(value, xmlFactory)
+ 
+     private fun org.w3c.dom.NodeList.asElementSequence(): Sequence<Element> =
+         (0 until length).asSequence().mapNotNull { item(it) as? Element }
+diff --git a/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolver.kt b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolver.kt
+index 8aab638..46e073b 100644
+--- a/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolver.kt
++++ b/protocol/src/main/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolver.kt
+@@ -1,15 +1,14 @@
+ package com.lumalink.g100d.protocol
+ 
+-import java.io.StringReader
+ import java.util.concurrent.TimeUnit
+ import javax.xml.parsers.DocumentBuilderFactory
++import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.withContext
+ import okhttp3.HttpUrl.Companion.toHttpUrl
+ import okhttp3.OkHttpClient
+ import okhttp3.Request
+ import org.w3c.dom.Element
+-import org.xml.sax.InputSource
+ 
+ /**
+  * Resolves the real ContentDirectory control URL from the camera's UPnP device
+@@ -22,8 +21,11 @@ class UpnpDescriptionResolver(
+     private val client: OkHttpClient = defaultClient(),
+     private val logger: LumixLogger? = null,
+     private val ssdp: UpnpSsdpDiscovery? = UpnpSsdpDiscovery(),
++    private val xmlFactory: () -> DocumentBuilderFactory = { DocumentBuilderFactory.newInstance() },
+ ) {
+     private val host = baseUrl.toHttpUrl().host
++    var connectionManagerControlUrl: String? = null
++        private set
+ 
+     suspend fun resolve(): LumixResult<String> = withContext(Dispatchers.IO) {
+         if (!HostGuard.isLocalHost(host)) {
+@@ -67,13 +69,16 @@ class UpnpDescriptionResolver(
+                         )
+                         return@use
+                     }
+-                    parseControlUrl(body, url)?.let { controlUrl ->
+-                        return@withContext LumixResult.Success(controlUrl)
++                    parseServices(body, url)?.let { services ->
++                        connectionManagerControlUrl = services.connectionManager
++                        return@withContext LumixResult.Success(services.contentDirectory)
+                     }
+                     lastError = LumixError.ProtocolMismatch(
+                         "No ContentDirectory controlURL in $url",
+                     )
+                 }
++            } catch (error: CancellationException) {
++                throw error
+             } catch (error: Throwable) {
+                 lastError = LumixError.Offline(
+                     error.message ?: "UPnP description failed",
+@@ -97,11 +102,15 @@ class UpnpDescriptionResolver(
+                                     "HTTP ${response.code} headers: ${response.headers}\n$body",
+                                 )
+                                 if (response.isSuccessful) {
+-                                    parseControlUrl(body, location.value)?.let { control ->
+-                                        return@withContext LumixResult.Success(control)
++                                    parseServices(body, location.value)?.let { services ->
++                                        connectionManagerControlUrl = services.connectionManager
++                                        return@withContext LumixResult.Success(services.contentDirectory)
+                                     }
++                                    lastError = LumixError.ProtocolMismatch("No ContentDirectory controlURL in ${location.value}")
+                                 }
+                             }
++                        } catch (error: CancellationException) {
++                            throw error
+                         } catch (error: Throwable) {
+                             lastError = LumixError.Offline(
+                                 error.message ?: "SSDP description failed",
+@@ -122,55 +131,41 @@ class UpnpDescriptionResolver(
+         )
+     }
+ 
+-    private fun parseControlUrl(xml: String, baseUrl: String): String? {
+-        val document = runCatching {
+-            val factory = DocumentBuilderFactory.newInstance().apply {
+-                isNamespaceAware = true
+-                isXIncludeAware = false
+-                isExpandEntityReferences = false
+-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+-                setFeature("http://xml.org/sax/features/external-general-entities", false)
+-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+-            }
+-            factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+-        }.getOrNull() ?: return null
+-
+-        val urlBase = document.getElementsByTagName("*")
+-            .asElementSequence()
+-            .firstOrNull { it.localName == "URLBase" }
+-            ?.textContent
+-            ?.trim()
+-            ?.takeIf { it.isNotEmpty() }
+-        val rootBase = urlBase ?: baseUrl
+-
+-        val services = document.getElementsByTagName("*").asElementSequence()
+-            .filter { it.localName == "service" || it.tagName.endsWith(":service") }
+-        for (service in services) {
+-            val type = childText(service, "serviceType").orEmpty()
+-            if (!type.contains("ContentDirectory", ignoreCase = true)) continue
+-            val control = childText(service, "controlURL") ?: continue
+-            return runCatching {
+-                rootBase.toHttpUrl().resolve(control)?.toString()
+-            }.getOrNull()
+-        }
++    private data class Services(val contentDirectory: String, val connectionManager: String?)
+ 
+-        // Namespace/parser variations: fall back to a strict textual extraction
+-        // of the ContentDirectory controlURL. This is still the same read-only
+-        // description document.
+-        val textual = Regex(
+-            """<(?:[\w-]+:)?controlURL[^>]*>\s*([^<]+?)\s*</(?:[\w-]+:)?controlURL>""",
++    private fun parseServices(xml: String, baseUrl: String): Services? {
++        if (CameraXml.hasUnsafeDeclaration(xml)) return null
++        val document = CameraXml.parse(xml, xmlFactory)
++        fun textTag(block: String, name: String): String? = Regex(
++            """<(?:[\w-]+:)?${Regex.escape(name)}\b[^>]*>\s*([^<]+?)\s*</(?:[\w-]+:)?${Regex.escape(name)}>""",
+             RegexOption.IGNORE_CASE,
+-        ).find(xml)?.groupValues?.getOrNull(1)?.trim()
+-        if (!textual.isNullOrEmpty()) {
+-            return runCatching {
+-                if (textual.startsWith("http://") || textual.startsWith("https://")) {
+-                    textual
+-                } else {
+-                    rootBase.toHttpUrl().resolve(textual)?.toString()
++        ).find(block)?.groupValues?.getOrNull(1)?.trim()?.replace("&amp;", "&")
++        val urlBase = document?.getElementsByTagName("*")?.asElementSequence()
++            ?.firstOrNull { it.localName == "URLBase" || it.tagName == "URLBase" }
++            ?.textContent?.trim()?.takeIf { it.isNotEmpty() } ?: textTag(xml, "URLBase")
++        val rootBase = urlBase ?: baseUrl
++        val services = document?.getElementsByTagName("*")?.asElementSequence()
++            ?.filter { it.localName == "service" || it.tagName == "service" || it.tagName.endsWith(":service") }
++            ?.mapNotNull { service ->
++                val type = childText(service, "serviceType") ?: return@mapNotNull null
++                val control = childText(service, "controlURL") ?: return@mapNotNull null
++                type to control
++            }?.toList().orEmpty().toMutableList()
++        if (services.isEmpty()) {
++            // This fallback must remain reachable when the platform XML provider fails.
++            Regex("""<(?:[\w-]+:)?service\b[^>]*>(.*?)</(?:[\w-]+:)?service>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
++                .findAll(xml).forEach { match ->
++                    val type = textTag(match.groupValues[1], "serviceType")
++                    val control = textTag(match.groupValues[1], "controlURL")
++                    if (type != null && control != null) services += type to control
+                 }
+-            }.getOrNull()
+         }
+-        return null
++        fun controlFor(serviceName: String): String? {
++            val path = services.firstOrNull { it.first.contains(":$serviceName:", ignoreCase = true) }?.second ?: return null
++            return runCatching { rootBase.toHttpUrl().resolve(path)?.takeIf { HostGuard.isLocalHost(it.host) }?.toString() }.getOrNull()
++        }
++        val content = controlFor("ContentDirectory") ?: return null
++        return Services(content, controlFor("ConnectionManager"))
+     }
+ 
+     private fun childText(element: Element, name: String): String? {
+diff --git a/protocol/src/test/kotlin/com/lumalink/g100d/protocol/ProgressiveBrowseTest.kt b/protocol/src/test/kotlin/com/lumalink/g100d/protocol/ProgressiveBrowseTest.kt
+index a36eb0c..3e5e796 100644
+--- a/protocol/src/test/kotlin/com/lumalink/g100d/protocol/ProgressiveBrowseTest.kt
++++ b/protocol/src/test/kotlin/com/lumalink/g100d/protocol/ProgressiveBrowseTest.kt
+@@ -255,6 +255,93 @@ class ProgressiveBrowseTest {
+         }
+     }
+ 
++    @Test fun acceptsCameraRequiringQuotedSoapActionInsteadOfRepeating500() = runBlocking {
++        MockWebServer().use { server ->
++            server.dispatcher = object : Dispatcher() {
++                override fun dispatch(request: RecordedRequest): MockResponse {
++                    if (!request.getHeader("SOAPAction").orEmpty().startsWith("\"")) {
++                        return MockResponse().setResponseCode(500).setBody("<faultstring>SOAPAction must be quoted</faultstring>")
++                    }
++                    val body = request.body.readUtf8()
++                    return page(field(body, "StartingIndex"), field(body, "RequestedCount"), 3)
++                }
++            }
++            server.start()
++            val result = client(server).browseNewest(onProgress = {})
++            assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++            assertThat((result as LumixResult.Success).value).hasSize(3)
++        }
++    }
++
++    @Test fun recoversWhenPlaybackBrowseIsNotReadyForMoreThanOneRetry() = runBlocking {
++        MockWebServer().use { server ->
++            var attempts = 0
++            server.dispatcher = object : Dispatcher() {
++                override fun dispatch(request: RecordedRequest): MockResponse {
++                    attempts++
++                    if (attempts <= 8) return MockResponse().setResponseCode(500).setBody("<faultstring>not ready</faultstring>")
++                    val body = request.body.readUtf8()
++                    return page(field(body, "StartingIndex"), field(body, "RequestedCount"), 3)
++                }
++            }
++            server.start()
++            val result = client(server).browseNewest(onProgress = {})
++            assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++            assertThat((result as LumixResult.Success).value).hasSize(3)
++        }
++    }
++
++    @Test fun initializesAdvertisedConnectionManagerBeforeBrowse() = runBlocking {
++        MockWebServer().use { server ->
++            var ready = false
++            server.start()
++            server.dispatcher = object : Dispatcher() {
++                override fun dispatch(request: RecordedRequest): MockResponse {
++                    return when (request.path) {
++                        "/description" -> MockResponse().setBody("""<root xmlns="urn:schemas-upnp-org:device-1-0"><device><serviceList><service><serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType><controlURL>${server.url("/advertised/content")}</controlURL></service><service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType><controlURL>${server.url("/advertised/connection")}</controlURL></service></serviceList></device></root>""")
++                        "/advertised/connection" -> { ready = true; MockResponse().setBody("<ok/>") }
++                        "/advertised/content" -> if (!ready) MockResponse().setResponseCode(500).setBody("<faultstring>ConnectionManager not initialized</faultstring>") else {
++                            val body = request.body.readUtf8()
++                            page(field(body, "StartingIndex"), field(body, "RequestedCount"), 3)
++                        }
++                        else -> MockResponse().setResponseCode(404)
++                    }
++                }
++            }
++            val resolver = UpnpDescriptionResolver(
++                baseUrl = "http://127.0.0.1", descriptionUrlsOverride = listOf(server.url("/description").toString()),
++            )
++            val browser = UpnpContentDirectoryClient(baseUrl = "http://127.0.0.1", descriptionResolver = resolver, tryLumixPrefix = false)
++            val result = browser.browseNewest(onProgress = {})
++            assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++            assertThat((result as LumixResult.Success).value).hasSize(3)
++        }
++    }
++
++    @Test fun retriesInterruptedOlderPageWithoutDiscardingLoadedPhotos() = runBlocking {
++        MockWebServer().use { server ->
++            var interrupted = false
++            val snapshots = mutableListOf<CameraBrowseProgress>()
++            server.dispatcher = object : Dispatcher() {
++                override fun dispatch(request: RecordedRequest): MockResponse {
++                    val body = request.body.readUtf8()
++                    val start = field(body, "StartingIndex")
++                    if (start == 3 && !interrupted) {
++                        interrupted = true
++                        return MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST)
++                    }
++                    return page(start, field(body, "RequestedCount"), 103)
++                }
++            }
++            server.start()
++            val result = client(server).browseNewest(onProgress = { snapshots += it })
++            assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++            assertThat((result as LumixResult.Success).value).hasSize(103)
++            assertThat(snapshots.first().files).hasSize(50)
++            assertThat(snapshots.last().complete).isTrue()
++        }
++    }
++
+     private fun client(server: MockWebServer) = UpnpContentDirectoryClient(
+         baseUrl = "http://127.0.0.1", soapUrlOverride = server.url("/Server0/CDS_control").toString(),
+         tryLumixPrefix = false, sendProtocolInfo = false,
+diff --git a/protocol/src/test/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolverTest.kt b/protocol/src/test/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolverTest.kt
+index d64e27c..c7e6d10 100644
+--- a/protocol/src/test/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolverTest.kt
++++ b/protocol/src/test/kotlin/com/lumalink/g100d/protocol/UpnpDescriptionResolverTest.kt
+@@ -88,6 +88,55 @@ class UpnpDescriptionResolverTest {
+             .isEqualTo("http://192.168.54.1:60606/Server0/CDS_control")
+     }
+ 
++    @Test
++    fun parsesDescriptionWhenPlatformRejectsOptionalXmlFeatures() = runBlocking {
++        server.enqueue(MockResponse().setBody(description()))
++        val resolver = UpnpDescriptionResolver(
++            baseUrl = "http://127.0.0.1", descriptionUrlsOverride = listOf(server.url("/Lumix/Server0/ddd").toString()),
++            xmlFactory = { RestrictedXmlFactory() },
++        )
++        val result = resolver.resolve()
++        assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++        assertThat((result as LumixResult.Success).value).isEqualTo("http://192.168.54.1:60606/Server0/CDS_control")
++    }
++
++    @Test
++    fun textualFallbackSelectsContentDirectoryRatherThanFirstService() = runBlocking {
++        server.enqueue(MockResponse().setBody(description()))
++        val resolver = UpnpDescriptionResolver(
++            baseUrl = "http://127.0.0.1", descriptionUrlsOverride = listOf(server.url("/Lumix/Server0/ddd").toString()),
++            xmlFactory = { throw javax.xml.parsers.ParserConfigurationException("provider unavailable") },
++        )
++        val result = resolver.resolve()
++        assertThat(result).isInstanceOf(LumixResult.Success::class.java)
++        assertThat((result as LumixResult.Success).value).isEqualTo("http://192.168.54.1:60606/Server0/CDS_control")
++    }
++
++    @Test
++    fun fallbackRejectsDtdEvenWhenXmlProviderUnavailable() = runBlocking {
++        server.enqueue(MockResponse().setBody("<!DOCTYPE root [<!ENTITY x SYSTEM 'http://127.0.0.1/secret'>]>" + description()))
++        val resolver = UpnpDescriptionResolver(
++            baseUrl = "http://127.0.0.1", descriptionUrlsOverride = listOf(server.url("/ddd").toString()),
++            xmlFactory = { throw javax.xml.parsers.ParserConfigurationException("provider unavailable") },
++        )
++        assertThat(resolver.resolve()).isInstanceOf(LumixResult.Failure::class.java)
++        assertThat(server.requestCount).isEqualTo(1)
++    }
++
++    private fun description() = """<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:pana="urn:schemas-panasonic-com:pana"><device><serviceList><service><serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType><controlURL>http://192.168.54.1:60606/Server0/CM_control</controlURL></service><service><serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType><controlURL>http://192.168.54.1:60606/Server0/CDS_control</controlURL></service></serviceList></device></root>"""
++
++    private class RestrictedXmlFactory : javax.xml.parsers.DocumentBuilderFactory() {
++        private val delegate = javax.xml.parsers.DocumentBuilderFactory.newInstance()
++        override fun newDocumentBuilder(): javax.xml.parsers.DocumentBuilder {
++            delegate.isNamespaceAware = isNamespaceAware
++            return delegate.newDocumentBuilder()
++        }
++        override fun setFeature(name: String, value: Boolean) { throw javax.xml.parsers.ParserConfigurationException(name) }
++        override fun getFeature(name: String): Boolean = throw javax.xml.parsers.ParserConfigurationException(name)
++        override fun setAttribute(name: String, value: Any) { throw IllegalArgumentException(name) }
++        override fun getAttribute(name: String): Any = throw IllegalArgumentException(name)
++    }
++
+     @Test
+     fun returnsFailureWhenDescriptionHasNoContentDirectory() = runBlocking {
+         server.enqueue(MockResponse().setBody("<root><device /></root>"))
+diff --git a/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectSheets.kt b/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectSheets.kt
+index 2c9a907..d1403d6 100644
+--- a/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectSheets.kt
++++ b/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectSheets.kt
+@@ -351,6 +351,7 @@ fun CameraFilesSheet(
+         val visibleFiles = ui.files.filter { file ->
+             file.isDirectory || ui.fileFilter.accepts(file)
+         }
++        val notice = scanNotice(ui.files.size, ui.filesLoading, ui.scanComplete, ui.filesError, ui.scanWarning)
+         Column(
+             modifier = Modifier
+                 .fillMaxSize()
+@@ -373,7 +374,7 @@ fun CameraFilesSheet(
+                                 append(" · 已加载 ")
+                                 append(ui.files.size)
+                                 append(" 个文件")
+-                                ui.scanTotal?.let { append(" · 扫描 ${ui.scannedCount}/$it 项") }
++                                ui.scanTotal?.let { append("\n扫描 ${ui.scannedCount}/$it 项") }
+                                 if (ui.filesLoading) append(" · 读取中")
+                                 if (fileCount != ui.files.size) {
+                                     append("（")
+@@ -381,14 +382,14 @@ fun CameraFilesSheet(
+                                     append(" 个文件）")
+                                 }
+                                 if (ui.fileFilter != FileFilter.ALL) {
+-                                    append(" · 当前显示 ")
++                                    append("\n当前显示 ")
+                                     append(visibleFiles.size)
+                                     append(" 项")
+                                 }
+                             },
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                            maxLines = 2,
++                            maxLines = 3,
+                             overflow = TextOverflow.Ellipsis,
+                         )
+                     }
+@@ -488,18 +489,14 @@ fun CameraFilesSheet(
+                     body = "请先连接相机，再浏览相机文件。",
+                     tone = StatusTone.Warning,
+                 )
+-            } else if (ui.filesError != null) {
++            } else if (notice != null) {
+                 InfoBanner(
+-                    title = "读取失败",
+-                    body = ui.filesError,
+-                    tone = StatusTone.Error,
++                    title = notice.title,
++                    body = notice.body,
++                    tone = if (notice.fatal) StatusTone.Error else StatusTone.Warning,
+                 )
+             }
+ 
+-            if (ui.scanWarning != null) {
+-                InfoBanner(title = "读取提示", body = ui.scanWarning, tone = StatusTone.Warning)
+-            }
+-
+             if (connected && ui.files.isEmpty() && !ui.filesLoading && !ui.scanComplete) {
+                 InfoBanner(
+                     title = "需要重新读取相机",
+diff --git a/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectViewModel.kt b/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectViewModel.kt
+index 73dbf05..612f9fb 100644
+--- a/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectViewModel.kt
++++ b/transport/src/main/java/com/lumalink/g100d/transport/ui/ConnectViewModel.kt
+@@ -296,10 +296,12 @@ class ConnectViewModel(
+                         // Serialize the generation check with refresh/disconnect on Main.
+                         withContext(Dispatchers.Main.immediate) {
+                             if (scanGeneration == generation && connectionManager.session.value?.protocol === session.protocol) {
++                                if (progress.files.isNotEmpty()) accessReady = true
+                                 _uiState.update { state ->
+                                     state.copy(files = progress.files, scanTotal = progress.total,
+                                         scannedCount = progress.scannedCount, scanComplete = progress.complete,
+-                                        scanWarning = progress.warning)
++                                        scanWarning = progress.warning,
++                                        filesError = if (progress.warning == null) null else state.filesError)
+                                 }
+                             }
+                         }
+diff --git a/transport/src/main/java/com/lumalink/g100d/transport/ui/ScanNotice.kt b/transport/src/main/java/com/lumalink/g100d/transport/ui/ScanNotice.kt
+new file mode 100644
+index 0000000..c7a1896
+--- /dev/null
++++ b/transport/src/main/java/com/lumalink/g100d/transport/ui/ScanNotice.kt
+@@ -0,0 +1,25 @@
++package com.lumalink.g100d.transport.ui
++
++internal data class ScanNotice(val title: String, val body: String, val fatal: Boolean)
++
++/** A partial scan failure does not invalidate the files already loaded. */
++internal fun scanNotice(
++    loadedCount: Int,
++    scanning: Boolean,
++    complete: Boolean,
++    error: String?,
++    warning: String?,
++): ScanNotice? {
++    val issue = (if (complete) warning else error ?: warning) ?: return null
++    if (loadedCount == 0 && error != null && !complete) {
++        return ScanNotice("读取失败", issue, true)
++    }
++    if (loadedCount > 0 && !scanning && !complete) {
++        return ScanNotice(
++            "后台扫描暂停",
++            "已保留 $loadedCount 个文件，可先使用已加载的内容。其余照片尚未读完；点击刷新可重新读取。",
++            false,
++        )
++    }
++    return ScanNotice("读取提示", issue, false)
++}
+diff --git a/transport/src/test/java/com/lumalink/g100d/transport/ui/ScanNoticeTest.kt b/transport/src/test/java/com/lumalink/g100d/transport/ui/ScanNoticeTest.kt
+new file mode 100644
+index 0000000..2fe7f22
+--- /dev/null
++++ b/transport/src/test/java/com/lumalink/g100d/transport/ui/ScanNoticeTest.kt
+@@ -0,0 +1,28 @@
++package com.lumalink.g100d.transport.ui
++
++import com.google.common.truth.Truth.assertThat
++import org.junit.Test
++
++class ScanNoticeTest {
++    @Test fun partialListFailureIsNonFatalAndDoesNotExposeDuplicateTechnicalError() {
++        val notice = scanNotice(298, false, false, "Software caused connection abort", "Software caused connection abort")!!
++        assertThat(notice.fatal).isFalse()
++        assertThat(notice.title).isEqualTo("后台扫描暂停")
++        assertThat(notice.body).contains("298")
++        assertThat(notice.body).doesNotContain("Software caused connection abort")
++    }
++    @Test fun noLoadedFilesStillShowsFatalReadFailure() {
++        val notice = scanNotice(0, false, false, "UPnP HTTP 500", "UPnP HTTP 500")!!
++        assertThat(notice.fatal).isTrue()
++        assertThat(notice.body).contains("500")
++    }
++    @Test fun completedScanDoesNotShowStaleError() {
++        assertThat(scanNotice(298, false, true, "old error", null)).isNull()
++    }
++    @Test fun unavailableTotalWarningRemainsInformationalDuringScan() {
++        val notice = scanNotice(50, true, false, null, "相机未提供总数")!!
++        assertThat(notice.fatal).isFalse()
++        assertThat(notice.title).isEqualTo("读取提示")
++        assertThat(notice.body).contains("未提供总数")
++    }
++}

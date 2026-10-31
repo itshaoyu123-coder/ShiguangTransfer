@@ -1,0 +1,36 @@
+# Modified 2026-10-30 by Shiguang Transfer contributors: exclude all signing keys.
+*.iml
+.gradle/
+.gradle-home/
+.android/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+.dev/
+dev/
+dist/
+*.apk
+*.aab
+*.keystore
+.kotlin/
+.tmp-build/
+gallery/
+
+# Private local configuration and signing material
+*.jks
+*.p12
+*.pfx
+*.pem
+.env
+.env.*
+!.env.example
+.private/
+signing.properties
+keystore.properties
+
+# First public alpha: verified APK used as a Release attachment.
+!releases/assets/*.apk

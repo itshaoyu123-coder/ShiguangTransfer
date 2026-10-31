@@ -1,0 +1,37 @@
+name: 问题反馈
+description: 提交相机连接、扫描、预览或导入问题
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: "请勿公开密码、SSID、序列号、会话令牌、授权 challenge 或私人照片。只需相关时间段日志。"
+  - type: input
+    id: camera
+    attributes:
+      label: 相机型号和固件
+      placeholder: Panasonic S5 II / 固件版本
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: 手机和系统版本
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 拾光版本
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 操作步骤、预期和实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 已去除私人信息的相关日志（可选）
+      render: text

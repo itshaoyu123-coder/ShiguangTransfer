@@ -2,9 +2,9 @@
 
 一款为松下相机开发的 Android 图传 App，专注于把照片从相机带到手机。
 
-目前为 **0.2.10-alpha 测试版**，主要根据 Panasonic S5 II（S5M2 / S52）与小米 15 的实际使用反馈迭代。最低 Android 10。其他机型尚未系统验证。
+目前为 **0.2.10-alpha 测试版**，主要根据 Panasonic S5 II（S5M2 / S52）的实际使用反馈迭代。最低 Android 10。其他机型尚未系统验证。
 
-本项目基于 [Angelnable/LumaLink](https://github.com/Angelnable/LumaLink) 及用户提供的 progressive.3 改进源码继续开发，大量复用通信、浏览、下载与任务队列代码。界面及后续改进由拾光传输维护，遵循 Apache-2.0，保留原作者署名；不是完全从零编写，也不是 Panasonic 官方应用。
+本项目参考 [Angelnable/LumaLink](https://github.com/Angelnable/LumaLink) 的通信协议部分开发，界面及后续改进由拾光传输维护，遵循 Apache-2.0，保留原作者署名；不是完全从零编写，也不是 Panasonic 官方应用。
 
 ## 下载与使用
 

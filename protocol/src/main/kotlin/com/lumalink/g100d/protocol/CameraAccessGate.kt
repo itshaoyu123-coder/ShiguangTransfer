@@ -18,6 +18,8 @@ object CameraAccessGate {
     private val cameraMutex = Mutex()
     private val foregroundRequests = AtomicInteger(0)
 
+    fun diagnosticState(): String = "locked=${cameraMutex.isLocked} previews=${foregroundRequests.get()} transfer=$transferActive"
+
     suspend fun <T> withCamera(block: suspend () -> T): T = cameraMutex.withLock {
         block()
     }

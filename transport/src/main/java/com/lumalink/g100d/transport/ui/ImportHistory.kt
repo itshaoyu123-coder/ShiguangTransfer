@@ -56,6 +56,8 @@ import java.time.format.DateTimeFormatter
         Spacer(Modifier.height(22.dp)); Text("喜欢的照片，留在手机", fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp)); Text("在胶卷中选择照片，点击「导入所选」。\n完成后可在这里打开照片或交给 LUMIX Lab。", fontSize = 12.sp, lineHeight = 22.sp)
     } else Column(modifier) {
+        Text("新照片保存至「拾光传输」相册 · RAW 在下载目录", fontSize = 10.sp,
+            color = Color(0xFF71796F), modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${ui.activeCount} 项进行中 · 今天已导入 ${ui.completedToday} 项", fontSize = 11.sp, modifier = Modifier.weight(1f))
             TextButton(onClick = { selecting = !selecting; selected = emptySet() }) { Text(if (selecting) "完成选择" else "选择") }

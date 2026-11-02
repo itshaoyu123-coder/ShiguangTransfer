@@ -102,12 +102,20 @@ class TransferDownloader(
         CameraAccessGate.withCamera { downloadLocked(item) }
 
     private suspend fun downloadLocked(item: TransferEntity): Boolean {
+        val expectedProtocol = sessionProvider()?.protocol ?: run {
+            repository.markFailed(item.id, "相机未连接，无法开始传输")
+            return false
+        }
         var attempt = 0
         while (true) {
+            if (sessionProvider()?.protocol !== expectedProtocol) {
+                repository.markFailed(item.id, "相机连接已变化，请确认相机后重新尝试导入")
+                return false
+            }
             if (downloadOnce(item)) return true
             val current = repository.findById(item.id)
             if (current?.state == TransferState.CANCELED) return false
-            if (attempt >= 2 || sessionProvider() == null) return false
+            if (current == null || !shouldRetryDownload(current.errorMessage, attempt) || sessionProvider()?.protocol !== expectedProtocol) return false
             attempt++
             Diagnostics.info("传输重试 ${item.fileName}（第 $attempt 次）")
             repository.retry(item.id)
@@ -564,9 +572,9 @@ class TransferDownloader(
             else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
         }
         val relativePath = when (kind) {
-            MediaKind.JPEG -> "${Environment.DIRECTORY_PICTURES}/Shiguang"
-            MediaKind.VIDEO -> "${Environment.DIRECTORY_MOVIES}/Shiguang"
-            else -> "${Environment.DIRECTORY_DOWNLOADS}/Shiguang/RAW"
+            MediaKind.JPEG -> "${Environment.DIRECTORY_PICTURES}/拾光传输"
+            MediaKind.VIDEO -> "${Environment.DIRECTORY_MOVIES}/拾光传输"
+            else -> "${Environment.DIRECTORY_DOWNLOADS}/拾光传输/RAW"
         }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, item.fileName)
@@ -598,7 +606,7 @@ class TransferDownloader(
     private fun publishToAppStorage(staging: File, item: TransferEntity): String {
         val base = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: context.filesDir
-        val directory = File(base, "Shiguang").apply { mkdirs() }
+        val directory = File(base, "拾光传输").apply { mkdirs() }
         val target = uniqueTarget(directory, item.fileName)
         staging.copyTo(target, overwrite = false)
         return target.toURI().toString()

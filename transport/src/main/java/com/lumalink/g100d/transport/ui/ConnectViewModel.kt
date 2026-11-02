@@ -99,6 +99,7 @@ private data class FetchedBytes(
 )
 
 data class ConnectUiState(
+    val accessStage: GalleryAccessStage = GalleryAccessStage.WAITING,
     val ssid: String = "",
     val password: String = "",
     val baseUrl: String = LumixEndpoints.DEFAULT_BASE_URL,
@@ -162,7 +163,11 @@ class ConnectViewModel(
     private var heartbeatJob: Job? = null
     private var isForeground = false
     private var scanProtected = false
-    fun setScanProtection(active: Boolean) { scanProtected = active }
+    fun setScanProtection(active: Boolean) {
+        scanProtected = active
+        Diagnostics.info("scan-protection active=$active foreground=$isForeground")
+    }
+    fun scanDiagnosticState(): String = "foreground=$isForeground protected=$scanProtected job=${scanJob?.isActive} loading=${_uiState.value.filesLoading} paused=${_uiState.value.scanPaused} preview=${_uiState.value.preview.loading} ${CameraAccessGate.diagnosticState()}"
     private fun protectScan() {
         if (!isForeground || scanProtected) return
         runCatching { com.lumalink.g100d.transport.scan.ScanService.start(appContext) }
@@ -172,6 +177,9 @@ class ConnectViewModel(
             }
     }
     private val thumbnailRequests = mutableSetOf<String>()
+    private var galleryScrolling = false
+    private var thumbnailLoadMode = ThumbnailLoadMode.LOAD
+    private var galleryViewport: List<String> = emptyList()
     private var sessionKey: Any? = null
     // Only transfer IDs created in this camera session may update its gallery.
     // Never match old import records to a new card by name/path/size alone.
@@ -226,6 +234,7 @@ class ConnectViewModel(
                 val key = (state as? CameraConnectionState.Connected)?.session?.protocol
                 if (key !== sessionKey) {
                     sessionKey = key
+                    galleryViewport = emptyList()
                     dateTransferFiles.clear()
                     heartbeatJob?.cancel()
                     heartbeatJob = if (key == null) null else viewModelScope.launch {
@@ -270,6 +279,7 @@ class ConnectViewModel(
                             selectedPaths = emptySet(),
                             thumbnails = emptyMap(),
                             captureDates = emptyMap(),
+                            accessStage = GalleryAccessStage.WAITING,
                             preview = CameraPreviewUiState(),
                             message = null,
                         )
@@ -356,6 +366,8 @@ class ConnectViewModel(
         connect()
     }
     fun onBackground() {
+        if (_uiState.value.filesLoading && !_uiState.value.scanPaused) protectScan()
+        Diagnostics.info("app-background scanLoading=${_uiState.value.filesLoading} scanPaused=${_uiState.value.scanPaused} protection=$scanProtected objects=${_uiState.value.scannedCount}")
         isForeground = false; autoConnectAttempted = false
         cancelThumbnails()
         if (_uiState.value.preview.loading) {
@@ -434,6 +446,7 @@ class ConnectViewModel(
                                 if (progress.files.isNotEmpty()) accessReady = true
                                 _uiState.update { state ->
                                     state.copy(files = progress.files, scanTotal = progress.total,
+                                        accessStage = if (progress.files.isNotEmpty() || progress.complete) GalleryAccessStage.READY else state.accessStage,
                                         scannedCount = progress.scannedCount, scanComplete = progress.complete,
                                         scanWarning = progress.warning,
                                         filesError = if (progress.warning == null) null else state.filesError)
@@ -447,6 +460,7 @@ class ConnectViewModel(
                     is LumixResult.Success -> {
                         accessReady = true
                         accessRecoveryAttempted = false
+                        _uiState.update { it.copy(accessStage = GalleryAccessStage.READY) }
                     }
                     is LumixResult.Failure -> {
                         if (_uiState.value.files.isEmpty() && !accessRecoveryAttempted && !CameraAccessGate.transferActive) {
@@ -454,7 +468,8 @@ class ConnectViewModel(
                             accessRecoveryAttempted = true
                             requestAccessAndBrowse()
                         } else {
-                            _uiState.update { it.copy(filesError = result.error.message) }
+                            _uiState.update { it.copy(filesError = result.error.message,
+                                accessStage = if (it.files.isEmpty()) GalleryAccessStage.FAILED else it.accessStage) }
                         }
                     }
                 }
@@ -471,6 +486,8 @@ class ConnectViewModel(
     }
 
     fun setFileFilter(filter: FileFilter) {
+        closePreview()
+        cancelThumbnails()
         _uiState.update {
             it.copy(
                 fileFilter = filter,
@@ -639,12 +656,20 @@ class ConnectViewModel(
         thumbnailRequests.clear()
     }
 
+    fun updateGalleryMotion(mode: ThumbnailLoadMode, scrolling: Boolean, visiblePaths: List<String>) {
+        galleryScrolling = scrolling
+        if (visiblePaths.isNotEmpty()) galleryViewport = visiblePaths
+        if (thumbnailLoadMode != mode && mode == ThumbnailLoadMode.PAUSE) cancelThumbnails()
+        thumbnailLoadMode = mode
+    }
+
     fun releaseThumbnail(file: CameraFile) {
         thumbnailJobs.remove(file.path)?.cancel()
         thumbnailRequests.remove(file.path)
     }
 
     fun requestThumbnail(file: CameraFile) {
+        if (thumbnailLoadMode != ThumbnailLoadMode.LOAD) return
         if (file.isDirectory || !_uiState.value.previewEnabled) return
         if (_uiState.value.thumbnails.containsKey(file.path)) return
         thumbnailCache.get(quickPreviewKey(file))?.let { cached ->
@@ -776,7 +801,9 @@ class ConnectViewModel(
     fun readMissingDates() {
         if (dateJob?.isActive == true) return
         val session = connectionManager.session.value ?: return
-        val candidates = dateReadCandidates(_uiState.value.files, _uiState.value.captureDates)
+        val sourceFiles = _uiState.value.files
+        val positions = sourceFiles.mapIndexed { index, file -> photoResourceKey(file.path) to index }.toMap()
+        val candidates = dateReadCandidates(sourceFiles, _uiState.value.captureDates)
         if (candidates.isEmpty()) {
             _uiState.update { it.copy(datesLoading = false, datesChecked = 0, datesTotal = 0,
                 datesMessage = "当前已扫描照片无需补全日期；视频暂不支持读取拍摄日期。") }
@@ -787,23 +814,31 @@ class ConnectViewModel(
             _uiState.update { it.copy(datesLoading = true, datesChecked = 0, datesTotal = candidates.size,
                 datesMessage = "正在补全已扫描照片的日期；预览和导入优先") }
             try {
-                for ((index, file) in candidates.withIndex()) {
+                val pending = candidates.toMutableList()
+                while (pending.isNotEmpty()) {
                     currentCoroutineContext().ensureActive()
                     if (generation != scanGeneration || connectionManager.session.value?.protocol !== session.protocol) break
                     var attempted = false
                     var date: Long? = null
+                    var chosen: CameraFile? = null
                     while (!attempted) {
                         currentCoroutineContext().ensureActive()
                         CameraAccessGate.withScanCamera {
-                            if (_uiState.value.preview.file == null) {
+                            if (!galleryScrolling && _uiState.value.preview.file == null) {
                                 attempted = true
-                                date = withContext(Dispatchers.IO) { fetchCaptureDate(session, file) }
+                                chosen = nextNearbyDateFile(pending, positions, galleryViewport)
+                                chosen?.let { file ->
+                                    if (captureDay(file, _uiState.value.captureDates) == null)
+                                        date = withContext(Dispatchers.IO) { fetchCaptureDate(session, file) }
+                                }
                             }
                         }
                         if (!attempted) delay(200)
                     }
                     if (generation != scanGeneration || connectionManager.session.value?.protocol !== session.protocol) break
-                    _uiState.update { state -> state.copy(datesChecked = index + 1,
+                    val file = chosen ?: break
+                    pending.remove(file)
+                    _uiState.update { state -> state.copy(datesChecked = candidates.size - pending.size,
                         captureDates = date?.let { state.captureDates + (file.path to it) } ?: state.captureDates) }
                     // Yield between headers so directory pages and the heartbeat keep running.
                     delay(100)
@@ -957,6 +992,7 @@ class ConnectViewModel(
         }
         accessRequestInFlight = true
         authorizationJob = viewModelScope.launch {
+            _uiState.update { it.copy(accessStage = GalleryAccessStage.AUTHORIZING) }
             try {
             CameraAccessGate.withCamera {
             Diagnostics.info("用户确认请求相机访问，等待相机屏幕确认")
@@ -973,6 +1009,7 @@ class ConnectViewModel(
                 }
             ) {
                 is LumixResult.Success -> {
+                    _uiState.update { it.copy(accessStage = GalleryAccessStage.READING) }
                     session.protocol.readModel()?.let { connectionManager.updateModel(it) }
                     delay(500)
                     val playback = session.protocol.enterPlaybackMode()
@@ -996,6 +1033,7 @@ class ConnectViewModel(
                         it.copy(
                             filesLoading = false,
                             filesError = "访问请求失败：${result.error.message ?: "未知错误"}",
+                            accessStage = GalleryAccessStage.FAILED,
                         )
                     }
                 }

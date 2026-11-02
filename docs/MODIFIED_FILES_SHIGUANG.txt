@@ -28,3 +28,5 @@ Public snapshot preparation: README, CHANGELOG, DEVELOPMENT_HISTORY, SHIGUANG_US
 Public target corrected to itshaoyu123-coder/ShiguangTransfer by user instruction. Initial verified alpha APK and checksum retained under releases/assets for a build-gated Release job; no runtime code changes.
 
 0.2.11–0.2.13: CaptureDateHeader/parser tests; bounded preview Range recovery; GalleryDateSheet/Policy tests; session-bound passive date collection in ConnectViewModel; version, release workflow, changelog and verification documents. No private sample photos included.
+
+0.2.14–0.2.18: media publish directory, model/access-stage UI, retry policy/tests, scroll load policy/tests, nearby date priority/tests, standard home pager, ScanService lifecycle/health diagnostics, CameraAccessGate diagnostic snapshot, version and release documents. Publication-only attribution headers remain unchanged.

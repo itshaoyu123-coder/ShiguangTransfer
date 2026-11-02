@@ -19,12 +19,12 @@ import java.time.format.DateTimeFormatter
     loading: Boolean, checked: Int, total: Int, message: String?, onReadDates: () -> Unit, onStopDates: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text("按拍摄日期筛选", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        Text("相机目录或缩略图可能不带日期。可读取已扫描照片的文件头补全日期，无需下载整张原片；仅在手动开启后增加请求，支持暂停。", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        Text("手动开启后，优先补全当前浏览位置及附近照片的日期，再继续其余已扫描照片。滚动、预览和导入优先；不会下载整张原片。", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = if (loading) onStopDates else onReadDates) { Text(if (loading) "暂停读取日期" else "补全拍摄日期") }
             if (total > 0) Text("$checked / $total 张", modifier = Modifier.padding(top = 12.dp), fontSize = 12.sp)
         }
-        if (message != null) Text(if (loading) "正在读取，预览和导入优先" else message, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        if (message != null) Text(if (loading) "当前位置附近优先 · 滚动、预览和导入时让路" else message, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 ListItem(headlineContent = { Text("全部日期") }, supportingContent = { Text("${days.values.sum()} 个文件") },

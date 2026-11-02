@@ -7,6 +7,20 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 internal const val UNKNOWN_GALLERY_DATE = "unknown"
+internal fun photoResourceKey(path: String): String = path.substringBeforeLast('.')
+
+/** Current viewport first, then nearest photos in the same scanned snapshot.
+ * Unknown viewport or a changed filter falls back to the original camera order. */
+internal fun nextNearbyDateFile(pending: List<CameraFile>, positions: Map<String, Int>, visiblePaths: List<String>): CameraFile? {
+    val anchors = visiblePaths.mapNotNull { positions[photoResourceKey(it)] }
+    if (anchors.isEmpty()) return pending.firstOrNull()
+    val low = anchors.min()
+    val high = anchors.max()
+    return pending.minByOrNull { file ->
+        val index = positions[photoResourceKey(file.path)] ?: return@minByOrNull Int.MAX_VALUE
+        when { index < low -> low - index; index > high -> index - high; else -> 0 }
+    }
+}
 /** One metadata request per photo; prefer its JPEG to a much larger RAW resource. */
 internal fun dateReadCandidates(files: List<CameraFile>, dates: Map<String, Long>): List<CameraFile> =
     files.asSequence().filter { !it.isDirectory && it.kind in setOf(

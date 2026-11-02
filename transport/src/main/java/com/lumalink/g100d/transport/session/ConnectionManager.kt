@@ -191,6 +191,7 @@ class ConnectionManager(context: Context) {
         timeoutJob = scope.launch {
             delay(60_000)
             if (_state.value is CameraConnectionState.Connecting) {
+                Diagnostics.warn("连接等待超时：系统未交付可用的相机 Wi-Fi 网络")
                 cleanupNetwork()
                 _state.value = CameraConnectionState.Error("连接超时。请确认相机处于 Wi-Fi 待连接状态。")
             }
@@ -337,7 +338,7 @@ class ConnectionManager(context: Context) {
                 )
                 _session.value = session
                 Diagnostics.info(
-                    "握手成功：${result.value.model} / 固件 ${result.value.firmware ?: "未知"} / $candidate",
+                    "设备可达，待相机授权：${resolvedModel.model} / 固件 ${resolvedModel.firmware ?: "未知"} / $candidate",
                 )
                 _state.value = CameraConnectionState.Connected(session)
                 return

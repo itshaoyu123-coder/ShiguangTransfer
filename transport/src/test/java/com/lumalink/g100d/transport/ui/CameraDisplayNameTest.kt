@@ -11,6 +11,12 @@ class CameraDisplayNameTest {
         assertThat(cameraDisplayName("DC-S5M2X")).isEqualTo("S5 IIX")
         assertThat(cameraDisplayName("DC-GH7")).isEqualTo("GH7")
     }
+    @Test fun stripsCameraProvidedQuotesWithoutChangingTheActualModel() {
+        assertThat(cameraDisplayName("\"S5M2\"")).isEqualTo("S5 II")
+        assertThat(cameraDisplayName(" ‘DC-S5M2X’ ")).isEqualTo("S5 IIX")
+        assertThat(cameraDisplayLabel("\"S9\"")).isEqualTo("LUMIX S9")
+        assertThat(cameraDisplayLabel("\"UNKNOWN\"")).isEqualTo("松下相机")
+    }
     @Test fun missingIdentificationDoesNotInventAModel() {
         assertThat(cameraDisplayName(null)).isEqualTo("松下相机")
         assertThat(cameraDisplayName("LUMIX")).isEqualTo("松下相机")

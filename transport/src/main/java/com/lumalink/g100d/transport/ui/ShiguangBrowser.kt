@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -49,6 +51,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Brush
+import com.lumalink.g100d.ui.theme.GradientPalette
+import com.lumalink.g100d.ui.theme.LocalGradientPalette
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -80,15 +87,30 @@ import com.lumalink.g100d.protocol.CameraFile
 import com.lumalink.g100d.protocol.MediaKind
 import com.lumalink.g100d.transport.session.CameraConnectionState
 
-private val Ink = Color(0xFF202922)
-private val Sage = Color(0xFF275D4C)
-private val Muted = Color(0xFF71796F)
+private val Ink = Color(0xFF1B3435)
+private val Sage = Color(0xFF24585A)
+private val Muted = Color(0xFF405657)
 private val Paper = Color(0xFFF6F4EF)
+private val SoftEase = CubicBezierEasing(.22f, 1f, .36f, 1f)
+private fun Modifier.atmosphere(palette: GradientPalette): Modifier = drawWithCache {
+    val colors = palette.colors()
+    val base = Brush.verticalGradient(colors)
+    val glow = Brush.radialGradient(listOf(colors.first().copy(alpha = .35f), Color.Transparent),
+        center = Offset(size.width * .9f, size.height * .18f), radius = maxOf(size.width, size.height) * .65f)
+    onDrawBehind { drawRect(base); drawRect(glow) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) {
     val context = LocalContext.current
+    val palette = LocalGradientPalette.current
+    val installedVersion = remember(context.packageName) {
+        runCatching {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            "${info.versionName ?: "未知版本"} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)})"
+        }.getOrDefault("版本信息不可用")
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val connection by viewModel.connection.collectAsStateWithLifecycle()
@@ -99,6 +121,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
     var showConnection by rememberSaveable { mutableStateOf(false) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var showAppearance by rememberSaveable { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableIntStateOf(0) }
@@ -110,6 +133,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
     val dateCounts = remember(baseFiles, dateByPath) { baseFiles.groupingBy { dateByPath[it.path] }.eachCount() }
     val visibleFiles = remember(baseFiles, dateByPath, selectedGalleryDate) { baseFiles.filter { matchesGalleryDate(dateByPath[it.path], selectedGalleryDate) } }
     val gridState = rememberLazyGridState()
+    val historyState = rememberLazyListState()
     val tabPager = rememberPagerState(initialPage = if (showQueue) 1 else 0) { 2 }
     var tabSwipesEnabled by remember { mutableStateOf(true) }
     val gestureDensity = LocalDensity.current
@@ -118,7 +142,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
         WindowInsets.systemGestures.getLeft(gestureDensity, gestureLayout).toFloat(), WindowInsets.systemGestures.getRight(gestureDensity, gestureLayout).toFloat())
     LaunchedEffect(showQueue) {
         val target = if (showQueue) 1 else 0
-        if (tabPager.settledPage != target) tabPager.animateScrollToPage(target)
+        if (tabPager.settledPage != target) tabPager.animateScrollToPage(target, animationSpec = spring(dampingRatio = 1f, stiffness = 380f))
     }
     LaunchedEffect(tabPager) { snapshotFlow { tabPager.settledPage }.collect { showQueue = it == 1 } }
     var thumbnailLoadMode by remember { mutableStateOf(ThumbnailLoadMode.LOAD) }
@@ -148,7 +172,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
     }
     DisposableEffect(viewModel) { onDispose { viewModel.updateGalleryMotion(ThumbnailLoadMode.LOAD, false, emptyList()) } }
     var lastBackAt by remember { mutableLongStateOf(0L) }
-    BackHandler(enabled = ui.preview.file == null && !showConnection && !showAbout && !showDiagnostics && !showLicenses && !showGalleryDates) {
+    BackHandler(enabled = ui.preview.file == null && !showConnection && !showAbout && !showDiagnostics && !showLicenses && !showGalleryDates && !showAppearance) {
         val now = android.os.SystemClock.elapsedRealtime()
         if (showQueue) { showQueue = false; lastBackAt = 0L }
         else if (lastBackAt > 0 && now - lastBackAt < 2000) {
@@ -199,18 +223,18 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
     LaunchedEffect(ui.message) { ui.message?.let { viewModel.clearMessage(); snackbar.showSnackbar(it) } }
 
     if (ui.preview.file == null) {
-    Scaffold(containerColor = Paper, contentWindowInsets = WindowInsets.safeDrawing,
+    Scaffold(modifier = Modifier.atmosphere(palette), containerColor = Color.Transparent, contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
             AnimatedVisibility(visible = !showQueue && ui.selectedPaths.isNotEmpty(),
-                enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
-                exit = fadeOut(tween(120)) + slideOutVertically(tween(180)) { it / 2 }) {
-            Surface(color = Paper, shadowElevation = 10.dp) {
+                enter = fadeIn(tween(220, easing = SoftEase)) + slideInVertically(tween(280, easing = SoftEase)) { it / 2 },
+                exit = fadeOut(tween(150, easing = SoftEase)) + slideOutVertically(tween(220, easing = SoftEase)) { it / 2 }) {
+            Surface(color = Color.White.copy(alpha = .64f), modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = .8f)), shadowElevation = 0.dp) {
                 Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("已选 ${ui.selectedPaths.size} 张", fontWeight = FontWeight.SemiBold)
                         Text("保存到「拾光传输」目录", color = Muted, fontSize = 11.sp)
                     }
-                    Button(onClick = { requestNotice(); viewModel.enqueueSelected(); showQueue = true }, shape = RoundedCornerShape(14.dp)) {
+                    Button(onClick = { requestNotice(); viewModel.enqueueSelected(); showQueue = true }, shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Sage)) {
                         Icon(Icons.Outlined.SouthWest, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("导入所选")
                     }
                 }
@@ -224,20 +248,20 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalAlignment = Alignment.Bottom) {
                 AnimatedContent(targetState = showQueue, modifier = Modifier.weight(1f),
-                    transitionSpec = { (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 5 }) togetherWith
-                        (fadeOut(tween(100)) + slideOutVertically(tween(160)) { -it / 5 }) }, label = "pageTitle") { history ->
-                    Text(if (history) "带走的光" else "拾光", fontSize = 36.sp, lineHeight = 46.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    transitionSpec = { (fadeIn(tween(280, easing = SoftEase)) + slideInVertically(tween(280, easing = SoftEase)) { it / 5 }) togetherWith
+                        (fadeOut(tween(140, easing = SoftEase)) + slideOutVertically(tween(200, easing = SoftEase)) { -it / 5 }) }, label = "pageTitle") { history ->
+                    Text(if (history) "带走的光" else "拾光", fontSize = 34.sp, lineHeight = 44.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                 }
-                Row(Modifier.padding(bottom = 9.dp).clip(CircleShape).clickable { showConnection = true }.background(Color.White).padding(12.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(bottom = 9.dp).clip(CircleShape).clickable { showConnection = true }.background(Color.White.copy(alpha = .55f)).border(1.dp, Color.White.copy(alpha = .7f), CircleShape).padding(12.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).background(if (connected) Sage else Color(0xFFB2B7AD), CircleShape)); Spacer(Modifier.width(7.dp))
-                    Text(when { connected -> "${cameraDisplayName((connection as? CameraConnectionState.Connected)?.session?.model?.model)} · ${ui.accessStage.label}"; connection is CameraConnectionState.Handshaking -> "正在识别相机"; busy -> "正在连接 Wi-Fi"; ui.savedCameraName != null -> "我的相机 · 重连"; else -> "添加相机" }, fontSize = 11.sp, color = Ink)
+                    Text(when { connected -> "${cameraDisplayLabel((connection as? CameraConnectionState.Connected)?.session?.model?.model)} · ${ui.accessStage.label}"; connection is CameraConnectionState.Handshaking -> "正在识别相机"; busy -> "正在连接 Wi-Fi"; ui.savedCameraName != null -> "我的相机 · 重连"; else -> "添加相机" }, fontSize = 11.sp, color = Ink)
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { showQueue = false }, contentPadding = PaddingValues(end = 18.dp)) {
+                TextButton(onClick = { showQueue = false }, modifier = Modifier.heightIn(min = 48.dp), shape = CircleShape, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("相机胶卷", color = if (!showQueue) Ink else Muted, fontWeight = if (!showQueue) FontWeight.Bold else FontWeight.Normal, fontSize = 16.sp)
                 }
-                TextButton(onClick = { showQueue = true }) { Text("导入记录${if (queue.activeCount > 0) " · ${queue.activeCount}" else ""}", color = if (showQueue) Ink else Muted, fontSize = 16.sp) }
+                TextButton(onClick = { showQueue = true }, modifier = Modifier.heightIn(min = 48.dp), shape = CircleShape, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) { Text("导入记录${if (queue.activeCount > 0) " · ${queue.activeCount}" else ""}", color = if (showQueue) Ink else Muted, fontSize = 16.sp) }
                 Spacer(Modifier.weight(1f))
                 if (connected && !showQueue) IconButton(onClick = { viewModel.refreshCameraFiles() }) { Icon(Icons.Outlined.Refresh, "重新扫描", tint = Sage) }
             }
@@ -254,7 +278,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
             Column(Modifier.fillMaxSize()) {
             if (page == 1) {
                 ImportHistory(queue, connected, onRetry = transfers::retry, onCancel = transfers::cancel, onDelete = transfers::deleteMany,
-                    onOpenConnection = { showConnection = true }, modifier = Modifier.weight(1f))
+                    onOpenConnection = { showConnection = true }, listState = historyState, modifier = Modifier.weight(1f))
             } else {
                 if (connected || ui.files.isNotEmpty()) {
                     val status = when {
@@ -268,8 +292,8 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(status, fontSize = 11.sp, color = Muted)
-                            ui.scanTotal?.let { Text("对象进度 ${ui.scannedCount} / $it", fontSize = 10.sp, color = Muted) }
+                            Text(status, fontSize = 12.sp, color = Muted)
+                            ui.scanTotal?.let { Text("对象进度 ${ui.scannedCount} / $it", fontSize = 11.sp, color = Muted) }
                         }
                         if (!ui.scanComplete && ui.files.isNotEmpty()) TextButton(onClick = {
                             if (ui.filesLoading && !ui.scanPaused) viewModel.pauseScan() else viewModel.continueScan()
@@ -286,7 +310,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                         for (filter in listOf(FileFilter.ALL, FileFilter.JPG, FileFilter.RAW, FileFilter.VIDEOS)) FilterChip(selected = ui.fileFilter == filter,
                             onClick = { viewModel.setFileFilter(filter) }, label = { Text(filter.label, fontSize = 11.sp) }, shape = CircleShape,
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Sage, selectedLabelColor = Color.White, containerColor = Color.Transparent, labelColor = Muted))
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Sage, selectedLabelColor = Color.White, containerColor = Color.White.copy(alpha = .34f), labelColor = Muted))
                         Spacer(Modifier.weight(1f))
                         if (visibleFiles.isNotEmpty()) TextButton(onClick = { viewModel.toggleSelectAll(visibleFiles) }, contentPadding = PaddingValues(4.dp)) { Text("全选", fontSize = 11.sp) }
                     }
@@ -316,11 +340,11 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                         horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(11.dp), modifier = Modifier.weight(1f)) {
                         items(visibleFiles, key = { it.path }) { file ->
                             val selected = file.path in ui.selectedPaths
-                            val selectionScale by animateFloatAsState(if (selected) .96f else 1f,
-                                spring(dampingRatio = .8f, stiffness = 550f), label = "photoSelection")
-                            val selectionColor by animateColorAsState(if (selected) Sage else Color.Black.copy(alpha = .25f), tween(160), label = "selectionColor")
+                            val selectionScale by animateFloatAsState(if (selected) .98f else 1f,
+                                spring(dampingRatio = .9f, stiffness = 420f), label = "photoSelection")
+                            val selectionColor by animateColorAsState(if (selected) Sage else Color.Black.copy(alpha = .25f), tween(200, easing = SoftEase), label = "selectionColor")
                             val bitmap = ui.thumbnails[file.path]
-                            val imageAlpha by animateFloatAsState(if (bitmap == null) 0f else 1f, tween(160), label = "thumbnailReveal")
+                            val imageAlpha by animateFloatAsState(if (bitmap == null) 0f else 1f, tween(200, easing = SoftEase), label = "thumbnailReveal")
                             val pageActive = tabPager.currentPage == 0 && !tabPager.isScrollInProgress && !showQueue
                             LaunchedEffect(file.path, ui.preview.loading, resumed, thumbnailLoadMode, pageActive) {
                                 if (resumed && pageActive && !ui.preview.loading && thumbnailLoadMode == ThumbnailLoadMode.LOAD) viewModel.requestThumbnail(file)
@@ -350,7 +374,9 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                                     }
                                 }
                                 Text(file.name, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 3.dp, vertical = 4.dp))
-                                Text(dateByPath[file.path]?.toString() ?: "日期未知", fontSize = 9.sp, color = Muted, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                                dateByPath[file.path]?.let { day ->
+                                    Text(day.toString(), fontSize = 9.sp, color = Muted, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                                }
                             }
                         }
                     }
@@ -388,12 +414,20 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
     if (showGalleryDates) GalleryDateSheet(dateCounts, selectedGalleryDate, onSelect = { selectedGalleryDate = it; viewModel.clearGallerySelection(); showGalleryDates = false }, onDismiss = { showGalleryDates = false },
         loading = ui.datesLoading, checked = ui.datesChecked, total = ui.datesTotal, message = ui.datesMessage,
         onReadDates = viewModel::readMissingDates, onStopDates = viewModel::stopDateRead)
-    if (ui.preview.file != null) FullPreview(ui, onClose = viewModel::closePreview, onToggle = { viewModel.toggleSelection(ui.preview.file!!.path) }, onOriginal = viewModel::loadOriginalPreview, onPageSelected = viewModel::previewAt,
+    if (ui.preview.file != null) FullPreview(ui, onClose = viewModel::closePreview, onToggle = { viewModel.toggleSelection(ui.preview.file!!.path) }, onOriginal = viewModel::loadOriginalPreview, onRetry = viewModel::retryPreview, onPageSelected = viewModel::previewAt,
         onImport = { requestNotice(); viewModel.enqueueFile(ui.preview.file!!); showQueue = true })
-    if (showAbout) AlertDialog(onDismissRequest = { showAbout = false }, title = { Text("拾光传输 · 0.2.18") },
-        text = { Text("把喜欢的照片，轻松带到手机。\n\n拾光传输专注松下相机的照片浏览与无线导入，让选片、预览和保存更顺手。\n\n当前为测试版，不同相机与手机的兼容性仍在持续完善。") },
-        confirmButton = { TextButton(onClick = { showAbout = false; showDiagnostics = true }) { Text("诊断日志") } },
-        dismissButton = { TextButton(onClick = { showAbout = false; showLicenses = true }) { Text("开源声明") } })
+    if (showAppearance) AppearanceSheet(onDismiss = { showAppearance = false })
+    if (showAbout) AlertDialog(onDismissRequest = { showAbout = false }, title = { Text("拾光传输") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("版本 $installedVersion", fontSize = 12.sp, color = Muted)
+            Text("把喜欢的照片，轻松带到手机。", fontSize = 14.sp)
+            TextButton(onClick = { showAbout = false; showAppearance = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Palette, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("外观与背景")
+            }
+            TextButton(onClick = { showAbout = false; showDiagnostics = true }, modifier = Modifier.fillMaxWidth()) { Text("诊断日志") }
+            TextButton(onClick = { showAbout = false; showLicenses = true }, modifier = Modifier.fillMaxWidth()) { Text("开源声明") }
+            Text("测试版 · 兼容性仍在持续完善", fontSize = 11.sp, color = Muted)
+        } }, confirmButton = { TextButton(onClick = { showAbout = false }) { Text("关闭") } })
     if (showDiagnostics) {
         val log = remember { Diagnostics.asText() }
         AlertDialog(onDismissRequest = { showDiagnostics = false }, title = { Text("诊断日志") },
@@ -427,7 +461,7 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun FullPreview(ui: ConnectUiState, onClose: () -> Unit, onToggle: () -> Unit, onOriginal: () -> Unit, onPageSelected: (Int) -> Unit, onImport: () -> Unit) {
+@Composable private fun FullPreview(ui: ConnectUiState, onClose: () -> Unit, onToggle: () -> Unit, onOriginal: () -> Unit, onRetry: () -> Unit, onPageSelected: (Int) -> Unit, onImport: () -> Unit) {
     val preview = ui.preview
     val file = preview.file ?: return
     val image = preview.bitmap ?: ui.thumbnails[file.path]
@@ -494,11 +528,16 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                     .pointerInput(pageFile.path) { detectTapGestures(onDoubleTap = {
                         if (current) { scale = if (scale > 1f) 1f else 2f; pan = Offset.Zero }
                     }) }.transformable(transform, canPan = { scale > 1f }), contentAlignment = Alignment.Center) {
-                    if (pageImage != null) Image(pageImage.asImageBitmap(), pageFile.name,
-                        Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = if (current) scale else 1f; scaleY = if (current) scale else 1f
-                            translationX = if (current) pan.x else 0f; translationY = if (current) pan.y else 0f
-                        }, contentScale = ContentScale.Fit)
+                    if (pageImage != null) key(pageFile.path) {
+                        // Fade only between cached/clear images of this same photo. No prefetch.
+                        Crossfade(targetState = pageImage, animationSpec = tween(200, easing = SoftEase), label = "previewQuality",
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                scaleX = if (current) scale else 1f; scaleY = if (current) scale else 1f
+                                translationX = if (current) pan.x else 0f; translationY = if (current) pan.y else 0f
+                            }) { bitmap ->
+                            Image(bitmap.asImageBitmap(), pageFile.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                        }
+                    }
                     else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                         if (current && preview.loading) { CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.height(14.dp)) }
                         Text(if (!current || preview.loading) "正在取回预览" else preview.error ?: "预览暂不可用，仍可导入原文件", color = secondary, fontSize = 12.sp)
@@ -506,7 +545,10 @@ fun ShiguangBrowser(viewModel: ConnectViewModel, transfers: TransfersViewModel) 
                 }
             }
             Column(Modifier.fillMaxWidth().background(background).padding(horizontal = 18.dp, vertical = 10.dp)) {
-                if (preview.error != null && image != null) Text(preview.error, color = Color(0xFFE4BD9D), fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
+                if (preview.error != null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(preview.error, color = Color(0xFFE4BD9D), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRetry, enabled = !preview.loading) { Text("重试预览", color = Color(0xFFD4E5C8), fontSize = 12.sp) }
+                }
                 if (ui.previewQueue.size > 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { pagerScope.launch { pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0)) } }, enabled = ui.previewIndex > 0) { Icon(Icons.Outlined.ChevronLeft, "上一张", tint = if (ui.previewIndex > 0) Color.White else secondary) }
                     Text("${ui.previewIndex + 1} / ${ui.previewQueue.size}", color = secondary, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)

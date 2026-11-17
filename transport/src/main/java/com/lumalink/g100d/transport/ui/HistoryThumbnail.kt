@@ -78,9 +78,9 @@ internal class HistoryThumbnailLoader(private val context: Context) {
         value = null
         if (key != null) value = loader.load(key)
     }
-    Box(Modifier.size(56.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFFE8E8DF)), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(56.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFFE9EDF3)), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!.asImageBitmap(), item.fileName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Icon(if (item.mimeType.startsWith("video/")) Icons.Outlined.PlayCircle else Icons.Outlined.Image,
-            "${item.fileName} 暂无缩略图", Modifier.size(24.dp), tint = Color(0xFF9CA797))
+            "${item.fileName} 暂无缩略图", Modifier.size(24.dp), tint = Color(0xFF929DAE))
     }
 }

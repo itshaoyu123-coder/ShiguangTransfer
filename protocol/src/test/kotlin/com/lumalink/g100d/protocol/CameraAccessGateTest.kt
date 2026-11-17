@@ -12,6 +12,22 @@ import org.junit.Test
 class CameraAccessGateTest {
     @After fun reset() { CameraAccessGate.transferActive = false }
 
+    @Test fun diagnosticsReleaseOwnerAndWaitersAfterCancellation() = runBlocking {
+        val holder = launch(start = CoroutineStart.UNDISPATCHED) {
+            CameraAccessGate.withCamera("download") { CompletableDeferred<Unit>().await() }
+        }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) {
+            CameraAccessGate.withGalleryCamera { error("cancelled waiter ran") }
+        }
+        assertThat(CameraAccessGate.diagnosticState()).contains("owner=download")
+        assertThat(CameraAccessGate.diagnosticState()).contains("waiting=1")
+        pending.cancelAndJoin()
+        assertThat(CameraAccessGate.diagnosticState()).contains("waiting=0")
+        holder.cancelAndJoin()
+        assertThat(CameraAccessGate.diagnosticState()).contains("owner=none heldMs=0 waiting=0")
+        assertThat(CameraAccessGate.withScanCamera { "resumed" }).isEqualTo("resumed")
+    }
+
     @Test fun scanYieldsToQueuedPreviewAndCancelledPreviewDoesNotBlockFutureScans() = runBlocking {
         val release = CompletableDeferred<Unit>()
         val holder = launch(start = CoroutineStart.UNDISPATCHED) {

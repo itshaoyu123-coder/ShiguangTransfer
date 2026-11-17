@@ -3,7 +3,6 @@ package com.lumalink.g100d.protocol
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * The G100D grants one 50001 file per Browse, and a download consumes that
@@ -18,9 +17,33 @@ object CameraAccessGate {
     private val cameraMutex = Mutex()
     private val foregroundRequests = AtomicInteger(0)
 
-    fun diagnosticState(): String = "locked=${cameraMutex.isLocked} previews=${foregroundRequests.get()} transfer=$transferActive"
+    private data class Occupant(val operation: String, val startedNanos: Long)
+    @Volatile private var occupant: Occupant? = null
+    private val waiters = AtomicInteger(0)
 
-    suspend fun <T> withCamera(block: suspend () -> T): T = cameraMutex.withLock {
+    fun diagnosticState(): String {
+        val active = occupant
+        val heldMs = active?.let { (System.nanoTime() - it.startedNanos) / 1_000_000 } ?: 0
+        return "locked=${cameraMutex.isLocked} owner=${active?.operation ?: "none"} heldMs=$heldMs waiting=${waiters.get()} previews=${foregroundRequests.get()} transfer=$transferActive"
+    }
+
+    private suspend fun <T> withAccess(operation: String, block: suspend () -> T): T {
+        waiters.incrementAndGet()
+        try {
+            cameraMutex.lock()
+        } finally {
+            waiters.decrementAndGet()
+        }
+        occupant = Occupant(operation, System.nanoTime())
+        try {
+            return block()
+        } finally {
+            occupant = null
+            cameraMutex.unlock()
+        }
+    }
+
+    suspend fun <T> withCamera(operation: String = "control", block: suspend () -> T): T = withAccess(operation) {
         block()
     }
 
@@ -32,7 +55,7 @@ object CameraAccessGate {
         if (transferActive) return null
         foregroundRequests.incrementAndGet()
         try {
-            return cameraMutex.withLock {
+            return withAccess("gallery") {
                 if (transferActive) null else block()
             }
         } finally {
@@ -56,7 +79,7 @@ object CameraAccessGate {
     /** One background page only; queued previews and transfers take precedence. */
     suspend fun <T> withScanCamera(block: suspend () -> T): T? {
         if (transferActive || foregroundRequests.get() > 0) return null
-        return cameraMutex.withLock {
+        return withAccess("scan") {
             if (transferActive || foregroundRequests.get() > 0) null else block()
         }
     }

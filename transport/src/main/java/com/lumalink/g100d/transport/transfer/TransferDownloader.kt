@@ -99,7 +99,7 @@ class TransferDownloader(
     }
 
     private suspend fun download(item: TransferEntity): Boolean =
-        CameraAccessGate.withCamera { downloadLocked(item) }
+        CameraAccessGate.withCamera("download") { downloadLocked(item) }
 
     private suspend fun downloadLocked(item: TransferEntity): Boolean {
         val expectedProtocol = sessionProvider()?.protocol ?: run {

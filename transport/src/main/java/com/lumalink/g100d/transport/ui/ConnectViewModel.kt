@@ -5,6 +5,7 @@ package com.lumalink.g100d.transport.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -241,7 +242,7 @@ class ConnectViewModel(
                         while (true) {
                             delay(3_000)
                             if ((!isForeground && !scanProtected) || !accessReady || CameraAccessGate.transferActive || accessRequestInFlight) continue
-                            CameraAccessGate.withCamera {
+                            CameraAccessGate.withCamera("heartbeat") {
                                 if ((isForeground || scanProtected) && accessReady && !CameraAccessGate.transferActive && !accessRequestInFlight && sessionKey === key)
                                     key.keepSessionActive()
                             }
@@ -631,6 +632,14 @@ class ConnectViewModel(
         }
     }
 
+    fun retryPreview() {
+        val state = _uiState.value
+        val file = state.preview.file ?: return
+        if (!state.previewEnabled || state.preview.loading) return
+        loadPreview(state.previewQueue.ifEmpty { listOf(file) }, state.previewIndex,
+            original = state.preview.originalRequested)
+    }
+
     fun loadOriginalPreview() {
         val state = _uiState.value
         val file = state.preview.file ?: return
@@ -897,7 +906,16 @@ class ConnectViewModel(
         }
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         return runCatching {
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@runCatching null
+            val orientation = runCatching {
+                ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+            val values = previewOrientationMatrix(orientation) ?: return@runCatching bitmap
+            // Only transform the sampled display bitmap, never the camera original.
+            runCatching {
+                val matrix = Matrix().apply { setValues(values) }
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }.getOrDefault(bitmap)
         }.getOrNull()
     }
 
@@ -994,7 +1012,7 @@ class ConnectViewModel(
         authorizationJob = viewModelScope.launch {
             _uiState.update { it.copy(accessStage = GalleryAccessStage.AUTHORIZING) }
             try {
-            CameraAccessGate.withCamera {
+            CameraAccessGate.withCamera("authorization") {
             Diagnostics.info("用户确认请求相机访问，等待相机屏幕确认")
             _uiState.update {
                 it.copy(

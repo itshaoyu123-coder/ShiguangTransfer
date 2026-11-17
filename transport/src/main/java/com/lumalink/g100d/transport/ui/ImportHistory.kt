@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +28,7 @@ import com.lumalink.g100d.core.util.formatBytes
 import java.time.format.DateTimeFormatter
 
 @Composable internal fun ImportHistory(ui: TransfersUiState, connected: Boolean, onRetry: (String) -> Unit,
-    onCancel: (String) -> Unit, onDelete: (List<String>, Boolean) -> Unit, onOpenConnection: () -> Unit, modifier: Modifier) {
+    onCancel: (String) -> Unit, onDelete: (List<String>, Boolean) -> Unit, onOpenConnection: () -> Unit, listState: LazyListState, modifier: Modifier) {
     val context = LocalContext.current
     val thumbnails = remember(context.applicationContext) { HistoryThumbnailLoader(context.applicationContext) }
     DisposableEffect(thumbnails) { onDispose { thumbnails.clear() } }
@@ -67,7 +68,7 @@ import java.time.format.DateTimeFormatter
             TextButton(onClick = { openLab(ui.items.filter { it.id in selected }) }, enabled = selected.isNotEmpty()) { Text("LUMIX Lab", fontSize = 12.sp) }
             TextButton(onClick = { confirmDelete(ui.items.filter { it.id in selected }) }, enabled = selected.isNotEmpty()) { Text("删除", fontSize = 12.sp) }
         }
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             for (group in groups) {
                 item(key = "day-${group.date}") {
                     Text(group.date.format(DateTimeFormatter.ofPattern("yyyy 年 M 月 d 日")) + " · ${group.items.size} 项",
@@ -75,7 +76,7 @@ import java.time.format.DateTimeFormatter
                 }
                 items(group.items, key = { it.id }) { item ->
                     var menu by remember(item.id) { mutableStateOf(false) }
-                    Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
+                    Surface(color = Color.White.copy(alpha = .62f), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = .8f))) {
                         Column(Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (selecting) Checkbox(checked = item.id in selected,
@@ -86,7 +87,11 @@ import java.time.format.DateTimeFormatter
                                     Text(item.fileName, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(when(item.state) {
                                         TransferState.QUEUED -> "等待导入"
-                                        TransferState.RUNNING -> "${formatBytes(item.bytesDownloaded)} · ${formatBytes(item.speedBytesPerSecond)}/s"
+                                        TransferState.RUNNING -> when {
+                                            item.bytesDownloaded == 0L -> "正在准备导入"
+                                            item.speedBytesPerSecond <= 0L -> "已接收 ${formatBytes(item.bytesDownloaded)} · 等待相机响应"
+                                            else -> "${formatBytes(item.bytesDownloaded)} / ${formatBytes(item.sizeBytes)} · ${formatBytes(item.speedBytesPerSecond)}/s"
+                                        }
                                         TransferState.COMPLETED -> "已保存至手机 · ${formatBytes(item.bytesDownloaded)}"
                                         TransferState.FAILED -> "导入失败"
                                         TransferState.CANCELED -> "已取消"
@@ -116,7 +121,11 @@ import java.time.format.DateTimeFormatter
                                     }
                                 }
                             }
-                            if (item.state == TransferState.RUNNING) LinearProgressIndicator(progress = { item.progress ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(3.dp))
+                            if (item.state == TransferState.RUNNING) {
+                                val progressModifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(3.dp)
+                                if (item.progress != null) LinearProgressIndicator(progress = { item.progress!!.coerceIn(0f, 1f) }, modifier = progressModifier)
+                                else LinearProgressIndicator(modifier = progressModifier)
+                            }
                             item.errorMessage?.takeIf { item.state == TransferState.FAILED }?.let { Text(it, fontSize = 11.sp, color = Color(0xFF8B533B), modifier = Modifier.padding(top = 8.dp)) }
                         }
                     }

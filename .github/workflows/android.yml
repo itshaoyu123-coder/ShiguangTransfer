@@ -47,7 +47,7 @@ jobs:
           --tests '*UpnpContentDirectoryClientTest.parsesEmptyDidlWhenPlatformRejectsOptionalXmlSecurityFeatures'
           --tests '*UpnpContentDirectoryClientTest.parsesRelativeResourceWithRestrictedXmlFactory'
           --tests '*UpnpContentDirectoryClientTest.rejectsDoctypeBeforeOptionalPlatformFeaturesCanPermitEntityResolution'
-          :core:testDebugUnitTest :transport:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
+          :core:testDebugUnitTest :ui:testDebugUnitTest :transport:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -68,21 +68,21 @@ jobs:
         uses: actions/checkout@v4
       - name: Verify the existing test APK
         working-directory: releases/assets
-        run: sha256sum --check SHA256SUMS-0.2.18.txt
+        run: sha256sum --check SHA256SUMS-0.2.26.txt
       - name: Publish the verified alpha if absent
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TARGET: ${{ github.sha }}
         run: |
-          if gh release view v0.2.18-alpha >/dev/null 2>&1; then
+          if gh release view v0.2.26-alpha >/dev/null 2>&1; then
             echo 'Release already exists; leaving it unchanged.'
           else
-            gh release create v0.2.18-alpha \
-              releases/assets/ShiguangTransfer-0.2.18-alpha.apk \
-              releases/assets/SHA256SUMS-0.2.18.txt \
+            gh release create v0.2.26-alpha \
+              releases/assets/ShiguangTransfer-0.2.26-alpha.apk \
+              releases/assets/SHA256SUMS-0.2.26.txt \
               --target "$RELEASE_TARGET" \
-              --title '拾光传输 0.2.18-alpha' \
-              --notes-file releases/v0.2.18-alpha.md \
+              --title '拾光传输 0.2.26-alpha' \
+              --notes-file releases/v0.2.26-alpha.md \
               --prerelease
           fi
